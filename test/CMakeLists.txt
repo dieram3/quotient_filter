@@ -1,11 +1,10 @@
-function(add_test test_name)
+function(add_unittest test_name)
   include_directories(${PROJECT_SOURCE_DIR}/utils/gtest-1.7.0/include)
-
   add_executable(${test_name} ${ARGN})
-  target_link_libraries(${test_name}
-    gtest
-    gtest_main
-    )
+  target_link_libraries(${test_name} gtest gtest_main)
+  set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 14)
+  set_property(TARGET ${test_name} PROPERTY CXX_STANDARD_REQUIRED ON)
+  set_property(TARGET ${test_name} PROPERTY CXX_EXTENSIONS OFF)
 endfunction()
 
-add_test(quofil_test "quotient_filter_test.cpp")
+add_unittest(quofil_test "quotient_filter_test.cpp")
