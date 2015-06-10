@@ -1,10 +1,23 @@
-function(add_unittest test_name)
-  include_directories(${PROJECT_SOURCE_DIR}/utils/gtest-1.7.0/include)
-  add_executable(${test_name} ${ARGN})
-  target_link_libraries(${test_name} gtest gtest_main)
-  set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 14)
-  set_property(TARGET ${test_name} PROPERTY CXX_STANDARD_REQUIRED ON)
-  set_property(TARGET ${test_name} PROPERTY CXX_EXTENSIONS OFF)
+function(add_unittest TEST_NAME)
+  set(TARGET_ID "${TEST_NAME}_test")
+  
+  add_executable(${TARGET_ID} ${ARGN})
+  target_link_libraries(${TARGET_ID} quotient_filter gtest_main gtest)
+  set_property(TARGET ${TARGET_ID} PROPERTY CXX_EXTENSIONS OFF)
+
+  # Set warnings on AppleClang and Clang COMPILER IDS
+  target_compile_options(${TARGET_ID} PRIVATE 
+  $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:
+  -Weverything 
+  -Wno-c++98-compat 
+  -Wno-c++98-compat-pedantic
+  -Wno-padded
+  -Wno-old-style-cast
+  -Wno-sign-conversion 
+  -Wno-global-constructors
+  >)
+
+  add_test(NAME ${TEST_NAME} COMMAND ${TARGET_ID})
 endfunction()
 
-add_unittest(quofil_test "quotient_filter_test.cpp")
+add_unittest("quofil" "quotient_filter_test.cpp")

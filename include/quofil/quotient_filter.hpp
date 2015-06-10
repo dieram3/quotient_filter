@@ -5,8 +5,8 @@ namespace quofil {
 
 class quotient_filter {
 public:
-  bool getTrue() const { return true; }
-  bool getFalse() const { return false; }
+  constexpr bool get_true() const { return true; }
+  constexpr bool get_false() const { return false; }
 };
 
 } // namespace quofil
