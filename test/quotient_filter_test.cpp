@@ -28,6 +28,6 @@
 
 TEST(quotient_filter, getFunctions) {
   quofil::quotient_filter qfilter;
-  EXPECT_TRUE(qfilter.getTrue());
-  EXPECT_FALSE(qfilter.getFalse());
+  EXPECT_TRUE(qfilter.get_true());
+  EXPECT_FALSE(qfilter.get_false());
 }
