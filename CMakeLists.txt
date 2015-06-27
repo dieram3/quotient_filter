@@ -25,7 +25,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Add the Quotient filter library  
 # ---------------------------------------
 
-add_subdirectory(src)
+add_library(quotient_filter INTERFACE)
+target_include_directories(quotient_filter INTERFACE "${CMAKE_SOURCE_DIR}/include")
+
+# The following list does not contain all features used in the library
+# but contain the main ones. It will induce cmake to compile with a 
+# C++ standard >= 14
+target_compile_features(quotient_filter INTERFACE
+	cxx_generic_lambdas
+	cxx_lambda_init_captures
+	cxx_return_type_deduction
+	)
+
 
 # ---------------------------------------
 # Add the unit tests  

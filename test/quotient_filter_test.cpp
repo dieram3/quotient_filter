@@ -24,6 +24,29 @@
 #include <quofil/quotient_filter.hpp>
 #include <gtest/gtest.h>
 
-TEST(quotient_filter, Works) {
-  quofil::detail::quotient_filter_table table(16, 48);
+#include <random>  // for std::mt19937
+#include <vector>  // for std::vector
+#include <cstddef> // for std::size_t
+
+TEST(bits_manager, WorksWell) {
+
+  const size_t q_bits = 17;
+  const size_t r_bits = 32 - q_bits;
+  const size_t num_slots = 1 << q_bits;
+  const size_t max_remainder = (1 << r_bits) - 1;
+
+  std::mt19937 gen;
+  std::uniform_int_distribution<size_t> dist(0, max_remainder);
+
+  quofil::detail::bits_manager bm(q_bits, r_bits);
+  std::vector<uint64_t> vec(num_slots);
+
+  for (size_t i = 0; i < num_slots; ++i) {
+    const auto remainder = dist(gen);
+    bm.set_remainder(i, remainder);
+    vec[i] = remainder;
+  }
+
+  for (size_t i = 0; i < num_slots; ++i)
+    EXPECT_EQ(vec[i], bm.get_remainder(i)) << " i = " << i;
 }
