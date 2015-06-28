@@ -27,10 +27,11 @@
 #define QUOFIL_QUOTIENT_FILTER_HPP
 
 #include <exception>  // for std::exception
+#include <iterator>   // for std::forward_iterator_tag
 #include <functional> // for std::hash
 #include <memory>     // for std::unique_ptr
 #include <vector>     // for std::vector
-#include <cstddef>    // for std::size_t
+#include <cstddef>    // for std::size_t, std::ptrdiff_t
 
 namespace quofil {
 
@@ -39,10 +40,13 @@ public:
   const char *what() const noexcept override;
 };
 
-// fp stands for fingerprint
+/// \brief Quotient-Filter implementation class.
 class quotient_filter_fp {
 public:
   using value_type = unsigned long long;
+  class iterator;
+  using const_iterator = iterator;
+  friend class iterator;
 
 public:
   /// \brief Constructs a quotient filter using the given bits requirements.
@@ -61,6 +65,12 @@ public:
 
   /// \brief Checks if the given fingerprint is contained into the filter.
   bool contains(std::size_t fp) const noexcept;
+
+  /// \brief Counts how many fingerprint are contained into the filter.
+  ///
+  /// Effectively returns 0 or 1. This function exists for compatibilty with
+  /// STL sets.
+  std::size_t count(std::size_t fp) const noexcept { return contains(fp); }
 
   /// \brief Inserts the given fingerprint into the filter.
   ///
@@ -92,21 +102,29 @@ public:
   /// \brief Returns the number of bits used for the remainder.
   std::size_t remainder_bits() const noexcept { return r_bits; }
 
+  /// \brief Returns an iterator to the beginning of the filter.
+  const_iterator begin() const noexcept;
+
+  /// \brief Returns an iterator to the end of the filter.
+  const_iterator end() const noexcept;
+
 private:
-  value_type get_remainder(std::size_t pos) const noexcept;
-  void set_remainder(std::size_t pos, value_type value) noexcept;
-  value_type exchange_remainder(std::size_t pos, value_type new_value) noexcept;
+  value_type get_remainder(std::size_t) const noexcept;
+  void set_remainder(std::size_t, value_type) noexcept;
+  value_type exchange_remainder(std::size_t, value_type) noexcept;
 
-  std::size_t next_pos(std::size_t pos) const noexcept;
-  std::size_t prev_pos(std::size_t pos) const noexcept;
+  std::size_t next_pos(std::size_t) const noexcept;
+  std::size_t prev_pos(std::size_t) const noexcept;
 
-  value_type quotient_part(value_type fp) const noexcept;
-  value_type remainder_part(value_type fp) const noexcept;
+  value_type quotient_part(value_type) const noexcept;
+  value_type remainder_part(value_type) const noexcept;
 
-  std::size_t find_run(value_type fp) const noexcept;
+  std::size_t find_run(value_type) const noexcept;
 
-  void insert_into(std::size_t pos, bool is_head,
-                   value_type fp_remainder) noexcept;
+  void insert_into(std::size_t, value_type, bool) noexcept;
+
+  bool is_empty_slot(std::size_t) const noexcept;
+  bool is_run_start(std::size_t) const noexcept;
 
 private:
   std::size_t q_bits;
@@ -115,18 +133,70 @@ private:
   std::size_t num_elements;
   value_type q_mask;
   value_type r_mask;
-  std::vector<bool> flags; // TODO:Benchmark on separated vector bool for flags.
+  // std::vector<bool> flags; // TODO:Benchmark on separated vector bool for
+  // flags.
+  std::vector<bool> is_occupied;
+  std::vector<bool> is_continuation;
+  std::vector<bool> is_shifted;
   std::unique_ptr<value_type[]> data;
 };
 
-template <class Key, class Hash = std::hash<Key>>
-class quotient_filter {
+/// \brief Iterator to navigate through the elements of a quotient filter.
+
+class quotient_filter_fp::iterator {
 public:
-  void insert(const Key &elem);
-  void erase(const Key &elem);
-  bool contains(const Key &elem) const;
-  double error_probability() const;
+  using value_type = quotient_filter_fp::value_type;
+  using difference_type = std::ptrdiff_t;
+  using pointer = value_type *;
+  using reference = value_type;
+  using iterator_category = std::forward_iterator_tag;
+
+public:
+  iterator() = default;
+  explicit iterator(const quotient_filter_fp &the_filter) noexcept;
+
+  void operator++() { increment(); }
+
+  iterator operator++(int) {
+    auto old_iter = *this;
+    increment();
+    return old_iter;
+  }
+
+  reference operator*() const { return value; }
+
+  friend bool operator==(const iterator &lhs, const iterator &rhs) noexcept {
+    return lhs.equal(rhs);
+  }
+
+  friend bool operator!=(const iterator &lhs, const iterator &rhs) noexcept {
+    return !lhs.equal(rhs);
+  }
+
+private:
+  void increment() noexcept;
+
+  bool equal(const iterator &that) const noexcept {
+    return filter == that.filter && pos == that.pos;
+  }
+
+  reference dereference() const noexcept { return value; }
+
+  void update_value() noexcept;
+
+private:
+  const quotient_filter_fp *filter = nullptr;
+  size_t pos = 0;              // current position.
+  value_type run_quotient = 0; // quotient of current run.
+  value_type value = 0;        // Cache variable for current value.
 };
+
+inline quotient_filter_fp::iterator quotient_filter_fp::begin() const noexcept {
+  return iterator(*this);
+}
+inline quotient_filter_fp::iterator quotient_filter_fp::end() const noexcept {
+  return iterator();
+}
 
 } // end namespace quofil
 
