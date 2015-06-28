@@ -38,7 +38,7 @@ static constexpr block_type low_mask(std::size_t num_bits) noexcept {
 
 using bit_reference = std::vector<bool>::reference;
 
-static inline bool exchange(bit_reference bit, bool new_value) noexcept {
+static bool exchange(bit_reference bit, bool new_value) noexcept {
   const bool old_value = bit;
   bit = new_value;
   return old_value;
@@ -59,23 +59,23 @@ static constexpr bool is_shifted(const std::vector<bool> &flags,
   return flags[3 * pos + 2];
 }
 
-static inline void set_occupied(std::vector<bool> &flags, size_t pos,
-                                bool value) noexcept {
+static void set_occupied(std::vector<bool> &flags, size_t pos,
+                         bool value) noexcept {
   flags[3 * pos + 0] = value;
 }
 
-static inline void set_continuation(std::vector<bool> &flags, size_t pos,
-                                    bool value) noexcept {
+static void set_continuation(std::vector<bool> &flags, size_t pos,
+                             bool value) noexcept {
   flags[3 * pos + 1] = value;
 }
 
-static inline void set_shifted(std::vector<bool> &flags, size_t pos,
-                               bool value) noexcept {
+static void set_shifted(std::vector<bool> &flags, size_t pos,
+                        bool value) noexcept {
   flags[3 * pos + 2] = value;
 }
 
-static inline bool exchange_continuation(std::vector<bool> &flags, size_t pos,
-                                         bool value) noexcept {
+static bool exchange_continuation(std::vector<bool> &flags, size_t pos,
+                                  bool value) noexcept {
   return exchange(flags[3 * pos + 1], value);
 }
 
@@ -102,7 +102,7 @@ static constexpr bool is_empty(const std::vector<bool> &flags,
 // Data access functions
 // ==========================================
 
-inline value_type qfilter::get_remainder(const size_t pos) const noexcept {
+value_type qfilter::get_remainder(const size_t pos) const noexcept {
   const size_t num_bit = r_bits * pos;
   const size_t block = num_bit / bits_per_block;
   const size_t offset = num_bit % bits_per_block;
@@ -120,8 +120,7 @@ inline value_type qfilter::get_remainder(const size_t pos) const noexcept {
 }
 
 // Requires: value < 2^r_bits
-inline void qfilter::set_remainder(const size_t pos,
-                                   const value_type value) noexcept {
+void qfilter::set_remainder(const size_t pos, const value_type value) noexcept {
 
   assert(value == (value & low_mask(r_bits)));
 
@@ -142,8 +141,8 @@ inline void qfilter::set_remainder(const size_t pos,
   }
 }
 
-inline value_type qfilter::exchange_remainder(size_t pos,
-                                              value_type new_value) noexcept {
+value_type qfilter::exchange_remainder(size_t pos,
+                                       value_type new_value) noexcept {
   value_type old_value = get_remainder(pos);
   set_remainder(pos, new_value);
   return old_value;
@@ -153,11 +152,11 @@ inline value_type qfilter::exchange_remainder(size_t pos,
 // Slot navigation
 // ==========================================
 
-inline size_t qfilter::next_pos(const size_t pos) const noexcept {
+size_t qfilter::next_pos(const size_t pos) const noexcept {
   return (pos + 1) & low_mask(q_bits);
 }
 
-inline size_t qfilter::prev_pos(const size_t pos) const noexcept {
+size_t qfilter::prev_pos(const size_t pos) const noexcept {
   return (pos - 1) & low_mask(q_bits);
 }
 
@@ -165,11 +164,11 @@ inline size_t qfilter::prev_pos(const size_t pos) const noexcept {
 // Parts of finger print
 // ==========================================
 
-inline value_type qfilter::quotient_part(value_type fp) const noexcept {
+value_type qfilter::quotient_part(value_type fp) const noexcept {
   return (fp >> r_bits) & q_mask;
 }
 
-inline value_type qfilter::remainder_part(value_type fp) const noexcept {
+value_type qfilter::remainder_part(value_type fp) const noexcept {
   return fp & r_mask;
 }
 
@@ -252,8 +251,8 @@ bool qfilter::contains(size_t fp) const noexcept {
 // the first empty slot one position to the right. The inserted and the moved
 // elements are marked as shifted. Note that the inserted element could actually
 // not be shifted so it should be corrected outside.
-inline void qfilter::insert_into(size_t pos, bool is_head,
-                                 value_type fp_remainder) noexcept {
+void qfilter::insert_into(size_t pos, bool is_head,
+                          value_type fp_remainder) noexcept {
   bool continuation = !is_head;
   value_type remainder = fp_remainder;
   bool found_empty_slot = false;
