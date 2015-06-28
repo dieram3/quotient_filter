@@ -51,18 +51,23 @@ TEST(quotient_filter_fp, WorksWell) {
   qfilter filter(q_bits, r_bits);
   std::set<ulong> set;
 
-  const size_t max_elements_to_insert = filter.slots() / 2;
+  const size_t max_elements_to_insert = filter.capacity() / 2;
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<ulong> dist(0, max_fp);
 
   for (size_t i = 0; i != max_elements_to_insert; ++i) {
     const auto fp = dist(gen);
-    EXPECT_EQ(filter.insert(fp), set.insert(fp).second);
+    const auto pfilter = filter.insert(fp);
+    const auto pset = set.insert(fp);
+    EXPECT_EQ(pfilter.second, pset.second);
+    EXPECT_EQ(*pfilter.first, fp);
   }
 
+  EXPECT_EQ(filter.size(), set.size());
+
   for (ulong value : set)
-    EXPECT_TRUE(filter.contains(value));
+    EXPECT_TRUE(filter.count(value));
 
   repeat(10000, [&] {
     const auto fp = dist(gen);
@@ -83,11 +88,15 @@ TEST(iterator, WorksWell) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<ulong> dist(0, max_fp);
 
-  repeat(filter.slots(), [&] {
+  repeat(filter.capacity(), [&] {
     const auto new_value = dist(gen);
-    EXPECT_EQ(filter.insert(new_value), set.insert(new_value).second);
+    filter.insert(new_value);
+    set.insert(new_value);
   });
 
   EXPECT_EQ(*filter.begin(), *set.begin());
   EXPECT_TRUE(std::equal(filter.begin(), filter.end(), set.begin(), set.end()));
+
+  auto it = std::next(set.begin(), set.size() / 2);
+  EXPECT_TRUE(std::equal(filter.find(*it), filter.end(), it, set.end()));
 }

@@ -30,6 +30,7 @@
 #include <iterator>   // for std::forward_iterator_tag
 #include <functional> // for std::hash
 #include <memory>     // for std::unique_ptr
+#include <utility>    // for std::pair
 #include <vector>     // for std::vector
 #include <cstddef>    // for std::size_t, std::ptrdiff_t
 
@@ -63,24 +64,23 @@ public:
   ///
   quotient_filter_fp(std::size_t q, std::size_t r);
 
-  /// \brief Checks if the given fingerprint is contained into the filter.
-  bool contains(std::size_t fp) const noexcept;
+  iterator find(value_type fp) const noexcept;
 
   /// \brief Counts how many fingerprint are contained into the filter.
   ///
-  /// Effectively returns 0 or 1. This function exists for compatibilty with
-  /// STL sets.
-  std::size_t count(std::size_t fp) const noexcept { return contains(fp); }
+  /// Effectively returns 0 or 1.
+  std::size_t count(value_type fp) const noexcept;
 
   /// \brief Inserts the given fingerprint into the filter.
   ///
   /// \param fp The fingerprint to be inserted.
   ///
-  /// \returns \c false if the fingerprint was already contained into the
-  /// filter, otherwise \c true
+  /// \returns A pair consisting of an iterator to the inserted element (or to
+  /// the element that prevented the insertion) and a bool denoting whether the
+  /// insertion took place.
   ///
   /// \throws filter_is_full if \c *this is full.
-  bool insert(std::size_t fp);
+  std::pair<iterator, bool> insert(value_type fp);
 
   /// \brief Returns the number of elements in the quotient filter.
   std::size_t size() const noexcept { return num_elements; }
@@ -90,11 +90,11 @@ public:
 
   /// \brief Checks if the quotient filter is full i.e
   /// <tt>size() == slots()</tt>
-  bool full() const noexcept { return num_elements == num_slots; }
+  bool full() const noexcept { return size() == capacity(); }
 
   /// \brief Returns the maximum number of elements which the quotient filter
   /// can hold.
-  std::size_t slots() const noexcept { return num_slots; }
+  std::size_t capacity() const noexcept { return num_slots; }
 
   /// \brief Returns the number of bits used for the quotient.
   std::size_t quotient_bits() const noexcept { return q_bits; }
@@ -144,16 +144,17 @@ private:
 /// \brief Iterator to navigate through the elements of a quotient filter.
 
 class quotient_filter_fp::iterator {
+  friend class quotient_filter_fp;
+
 public:
   using value_type = quotient_filter_fp::value_type;
   using difference_type = std::ptrdiff_t;
-  using pointer = value_type *;
+  using pointer = const value_type *;
   using reference = value_type;
   using iterator_category = std::forward_iterator_tag;
 
 public:
   iterator() = default;
-  explicit iterator(const quotient_filter_fp &the_filter) noexcept;
 
   void operator++() { increment(); }
 
@@ -174,6 +175,9 @@ public:
   }
 
 private:
+  explicit iterator(const quotient_filter_fp *) noexcept;
+  iterator(const quotient_filter_fp *, size_t, value_type) noexcept;
+
   void increment() noexcept;
 
   bool equal(const iterator &that) const noexcept {
@@ -192,10 +196,13 @@ private:
 };
 
 inline quotient_filter_fp::iterator quotient_filter_fp::begin() const noexcept {
-  return iterator(*this);
+  return iterator(this);
 }
 inline quotient_filter_fp::iterator quotient_filter_fp::end() const noexcept {
   return iterator();
+}
+inline std::size_t quotient_filter_fp::count(value_type fp) const noexcept {
+  return find(fp) != end();
 }
 
 } // end namespace quofil

@@ -12,6 +12,7 @@
 // ==========================================
 
 using qfilter = ::quofil::quotient_filter_fp;
+using qf_iterator = qfilter::iterator;
 
 using std::size_t;
 using value_type = qfilter::value_type;
@@ -188,7 +189,7 @@ size_t qfilter::find_run(const value_type quotient) const noexcept {
   return pos;
 }
 
-bool qfilter::contains(size_t fp) const noexcept {
+qf_iterator qfilter::find(value_type fp) const noexcept {
 
   const auto fp_quotient = quotient_part(fp);
   const auto fp_remainder = remainder_part(fp);
@@ -196,19 +197,19 @@ bool qfilter::contains(size_t fp) const noexcept {
 
   // If the quotient has no run, fp can't exist.
   if (!is_occupied[canonical_slot_pos])
-    return false;
+    return end();
 
   // Search on the sorted run for fp_remainder.
   size_t pos = find_run(fp_quotient);
   do {
     const auto remainder = get_remainder(pos);
     if (remainder == fp_remainder)
-      return true;
+      return iterator{this, pos, fp_quotient};
     if (remainder > fp_remainder)
-      return false;
+      return end();
     pos = next_pos(pos);
   } while (is_continuation[pos]);
-  return false;
+  return end();
 }
 
 // ==========================================
@@ -233,7 +234,7 @@ void qfilter::insert_into(size_t pos, value_type remainder,
   } while (!found_empty_slot);
 }
 
-bool qfilter::insert(std::size_t fp) {
+std::pair<qf_iterator, bool> qfilter::insert(value_type fp) {
 
   if (full())
     throw quofil::filter_is_full();
@@ -246,7 +247,8 @@ bool qfilter::insert(std::size_t fp) {
     is_occupied[canonical_slot_pos] = true;
     set_remainder(canonical_slot_pos, fp_remainder);
     ++num_elements;
-    return true;
+    return std::make_pair(iterator{this, canonical_slot_pos, fp_quotient},
+                          true);
   }
 
   // Indicates that the run has no element. However the slot of the run start
@@ -263,7 +265,7 @@ bool qfilter::insert(std::size_t fp) {
     do {
       const auto remainder = get_remainder(pos);
       if (remainder == fp_remainder)
-        return false;
+        return std::make_pair(iterator{this, pos, fp_quotient}, false);
       if (remainder > fp_remainder)
         break;
       pos = next_pos(pos);
@@ -279,24 +281,24 @@ bool qfilter::insert(std::size_t fp) {
     is_shifted[pos] = false;
 
   ++num_elements;
-  return true;
+  return std::make_pair(iterator{this, pos, fp_quotient}, true);
 }
 
 // ==========================================
 // Iterator
 // ==========================================
 
-using qf_iterator = qfilter::iterator;
-
 void qf_iterator::update_value() noexcept {
   value = (run_quotient << filter->r_bits) | filter->get_remainder(pos);
 }
 
-qf_iterator::iterator(const qfilter &the_filter) noexcept {
-  if (the_filter.empty())
+qf_iterator::iterator(const qfilter *the_filter) noexcept {
+  assert(the_filter != nullptr);
+
+  if (the_filter->empty())
     return;
 
-  filter = &the_filter;
+  filter = the_filter;
 
   size_t quotient_pos = 0;
   while (!filter->is_occupied[quotient_pos])
@@ -305,6 +307,14 @@ qf_iterator::iterator(const qfilter &the_filter) noexcept {
   run_quotient = static_cast<value_type>(quotient_pos);
   pos = filter->find_run(run_quotient);
 
+  update_value();
+}
+
+qf_iterator::iterator(const qfilter *filter_, const size_t pos_,
+                      value_type run_quotient_) noexcept
+    : filter{filter_},
+      pos{pos_},
+      run_quotient{run_quotient_} {
   update_value();
 }
 
@@ -323,7 +333,7 @@ void qf_iterator::increment() noexcept {
     ++quotient_pos;
 
     // End was reached.
-    if (quotient_pos == filter->slots()) {
+    if (quotient_pos == filter->num_slots) {
       filter = nullptr;
       pos = 0;
       return;
