@@ -1,4 +1,8 @@
-add_library(quotient_filter "quotient_filter.cpp")
+add_library(quotient_filter
+  "filter_is_full.cpp"
+  "quotient_filter_fp.cpp"
+)
+
 target_include_directories(quotient_filter PUBLIC "${CMAKE_SOURCE_DIR}/include")
 
 # The following list some features introduced in C++14. Thereby, CMake induces 
