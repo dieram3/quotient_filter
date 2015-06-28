@@ -26,122 +26,48 @@
 #ifndef QUOFIL_QUOTIENT_FILTER_HPP
 #define QUOFIL_QUOTIENT_FILTER_HPP
 
-#include <algorithm>  // for std::min
 #include <functional> // for std::hash, std::equal_to
-#include <limits>     // for std::numeric_limits
 #include <memory>     // for std::unique_ptr
 #include <vector>     // for std::vector
-#include <cassert>    // for assert
 #include <cstddef>    // for std::size_t
 
 namespace quofil {
 
-using uchar = unsigned char;
-
-namespace detail {
-
-class bits_manager {
-
-  using block_type = unsigned long long;
-
-  static constexpr size_t bits_per_block =
-      std::numeric_limits<block_type>::digits;
-
-  size_t q_bits;
-  size_t r_bits;
-  size_t num_slots;
-  std::vector<bool> flags;
-  std::unique_ptr<uint64_t[]> data;
-
-private:
-  // Make a mask with the num_bits lsb bits set to 1.
-  static constexpr block_type low_mask(std::size_t num_bits) noexcept {
-    return ~(~static_cast<block_type>(0) << num_bits);
-  }
-
-  // Computes the ceil of x/y
-  static constexpr block_type ceil_div(block_type x, block_type y) noexcept {
-    return x / y + block_type(x % y == 0 ? 0 : 1);
-  }
-
-  // Computes the number of bytes required to the data table.
-  size_t required_blocks() const noexcept {
-    const size_t required_bits = num_slots * r_bits;
-    return ceil_div(required_bits, bits_per_block);
-  }
+// fp stands for fingerprint
+class quotient_filter_fp {
+public:
+  using value_type = unsigned long long;
 
 public:
-  bits_manager(size_t q, size_t r)
-      : q_bits{q}, r_bits{r}, num_slots{1ULL << q}, flags(3 * num_slots),
-        data(std::make_unique<uint64_t[]>(required_blocks())) {
-    assert(r_bits <= bits_per_block);
-  }
+  quotient_filter_fp(std::size_t q, std::size_t r);
+  bool contains(std::size_t fp) const noexcept;
+  bool insert(std::size_t fp);
+  std::size_t size() const noexcept { return num_elements; }
 
-  bool is_ocuppied(size_t pos) const noexcept { return flags[3 * pos + 0]; }
+private:
+  value_type get_remainder(std::size_t pos) const noexcept;
+  void set_remainder(std::size_t pos, value_type value) noexcept;
 
-  bool is_continuation(size_t pos) const noexcept { return flags[3 * pos + 1]; }
+  std::size_t next_pos(std::size_t pos) const noexcept;
+  std::size_t prev_pos(std::size_t pos) const noexcept;
 
-  bool is_shifted(size_t pos) const noexcept { return flags[3 * pos + 2]; }
+  value_type quotient_part(value_type fp) const noexcept;
+  value_type remainder_part(value_type fp) const noexcept;
 
-  void set_ocuppied(size_t pos, bool value) noexcept {
-    flags[3 * pos + 0] = value;
-  }
+  std::size_t find_run(value_type fp) const noexcept;
 
-  void set_continuation(size_t pos, bool value) noexcept {
-    flags[3 * pos + 1] = value;
-  }
-  void set_shifted(size_t pos, bool value) noexcept {
-    flags[3 * pos + 2] = value;
-  }
-
-  size_t quotient_bits() const noexcept { return q_bits; }
-
-  size_t remainder_bits() const noexcept { return r_bits; }
-
-  block_type get_remainder(const size_t pos) const noexcept {
-    const size_t num_bit = r_bits * pos;
-    const size_t block = num_bit / bits_per_block;
-    const size_t offset = num_bit % bits_per_block;
-
-    size_t pending_bits = r_bits;
-    size_t bits_to_read = std::min(pending_bits, bits_per_block - offset);
-
-    block_type ans = (data[block] >> offset) & low_mask(bits_to_read);
-    pending_bits -= bits_to_read;
-    if (pending_bits) {
-      uint64_t next = data[block + 1] & low_mask(pending_bits);
-      ans |= next << bits_to_read;
-    }
-    return ans;
-  }
-
-  // Requires: value < 2^r_bits
-  void set_remainder(const size_t pos, const uint64_t value) noexcept {
-
-    assert(value == (value & low_mask(r_bits)));
-
-    const size_t num_bit = r_bits * pos;
-    const size_t block = num_bit / bits_per_block;
-    const size_t offset = num_bit % bits_per_block;
-
-    size_t pending_bits = r_bits;
-    size_t bits_to_write = std::min(pending_bits, bits_per_block - offset);
-
-    data[block] &= ~(low_mask(bits_to_write) << offset);
-    data[block] |= value << offset;
-
-    pending_bits -= bits_to_write;
-    if (pending_bits) {
-      data[block + 1] &= ~low_mask(pending_bits);
-      data[block + 1] |= value >> bits_to_write;
-    }
-  }
+private:
+  std::size_t q_bits;
+  std::size_t r_bits;
+  std::size_t num_slots;
+  std::size_t num_elements;
+  value_type q_mask;
+  value_type r_mask;
+  std::vector<bool> flags;
+  std::unique_ptr<value_type[]> data;
 };
 
-} // end namespace detail
-
-template <class Key, class Hash = std::hash<Key>,
-          class Allocator = std::allocator<Key>>
+template <class Key, class Hash = std::hash<Key>>
 class quotient_filter {
 public:
   void insert(const Key &elem);
