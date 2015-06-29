@@ -1,7 +1,4 @@
-add_library(quotient_filter
-  "filter_is_full.cpp"
-  "quotient_filter_fp.cpp"
-)
+add_library(quotient_filter "quotient_filter_fp.cpp")
 
 target_include_directories(quotient_filter PUBLIC "${CMAKE_SOURCE_DIR}/include")
 

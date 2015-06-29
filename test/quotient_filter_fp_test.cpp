@@ -1,25 +1,7 @@
-// The MIT License (MIT)
-//
-// Copyright (c) <June 2015> <Diego Ramirez and Marcello Tavano>
-// any issue can mail to <(diego.ramirezd and marcello.tavanolanas)@mail.udp.cl>
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to
-// deal in the Software without restriction, including without limitation the
-// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-// sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+//          Copyright Diego Ramírez July 2015
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
 
 #include <quofil/quotient_filter_fp.hpp>
 #include <gtest/gtest.h>
@@ -42,30 +24,45 @@ static void repeat(std::size_t n, Function f) {
     f();
 }
 
-// Returns the max value representable with the given bits.
-static value_t max_value(std::size_t bits) { return (value_t{1} << bits) - 1; }
+static auto make_fp_generator(const qfilter &filter) {
+  const size_t fp_bits = filter.quotient_bits() + filter.remainder_bits();
+  const value_t max_fp = (value_t{1} << fp_bits) - 1;
 
-TEST(quotient_filter_fp, WorksWell) {
-  const size_t q_bits = 13;
-  const size_t r_bits = 5;
-  const size_t fp_bits = q_bits + r_bits;
-  const value_t max_fp = max_value(fp_bits);
-
-  qfilter filter(q_bits, r_bits);
-  std::set<value_t> set;
-
-  const size_t max_elements_to_insert = filter.capacity() / 2;
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<value_t> dist(0, max_fp);
 
-  for (size_t i = 0; i != max_elements_to_insert; ++i) {
-    const auto fp = dist(gen);
+  return [ gen = std::move(gen), dist ]() mutable { return dist(gen); };
+}
+
+static auto make_insertion_decision_generator(const qfilter &filter) {
+  using param_t = std::bernoulli_distribution::param_type;
+  std::bernoulli_distribution dist;
+  std::default_random_engine gen;
+
+  return [ gen = std::move(gen), dist, &filter ]() mutable {
+    if (filter.empty())
+      return true;
+    if (filter.full())
+      return false;
+    const double load_factor = double(filter.size()) / filter.capacity();
+    return dist(gen, param_t(1.0 - load_factor));
+  };
+}
+
+TEST(quotient_filter_fp, WorksWell) {
+  qfilter filter(13, 5); // q_bits and r_bits
+  std::set<value_t> set;
+
+  auto gen_fp = make_fp_generator(filter);
+
+  repeat(filter.capacity() / 2, [&] {
+    const auto fp = gen_fp();
     const auto pfilter = filter.insert(fp);
     const auto pset = set.insert(fp);
     EXPECT_EQ(pfilter.second, pset.second);
     EXPECT_EQ(*pfilter.first, fp);
-  }
+  });
 
   EXPECT_EQ(filter.size(), set.size());
 
@@ -73,39 +70,22 @@ TEST(quotient_filter_fp, WorksWell) {
     EXPECT_TRUE(filter.count(value));
 
   repeat(10000, [&] {
-    const auto fp = dist(gen);
+    const auto fp = gen_fp();
     EXPECT_EQ(set.count(fp), filter.count(fp));
   });
 }
 
 TEST(quotient_filter_fp, InsertionDeletionQueryTest) {
-  const size_t q_bits = 13;
-  const size_t r_bits = 2;
-  const size_t fp_bits = q_bits + r_bits;
-  const value_t max_fp = max_value(fp_bits);
-
-  qfilter filter(q_bits, r_bits);
+  qfilter filter(13, 2); // q_bits and r_bits
   std::set<value_t> set;
 
-  std::random_device rd;
-  std::mt19937 fp_gen(rd());
-  std::default_random_engine bern_gen(rd());
-
-  std::bernoulli_distribution insert_dist;
-  using param_t = std::bernoulli_distribution::param_type;
-  std::uniform_int_distribution<value_t> fp_dist(0, max_fp);
+  auto gen_fp = make_fp_generator(filter);
+  auto do_insertion = make_insertion_decision_generator(filter);
 
   repeat(3 * filter.capacity(), [&] {
-    const double load_factor = double(filter.size()) / filter.capacity();
-    const bool do_insertion =
-        filter.empty()
-            ? true
-            : filter.full() ? false
-                            : insert_dist(bern_gen, param_t(1.0 - load_factor));
+    const auto fp = gen_fp();
 
-    const auto fp = fp_dist(fp_gen);
-
-    if (do_insertion) {
+    if (do_insertion()) {
       const auto pfilter = filter.insert(fp);
       const auto pset = set.insert(fp);
       EXPECT_EQ(pset.second, pfilter.second);
@@ -120,20 +100,14 @@ TEST(quotient_filter_fp, InsertionDeletionQueryTest) {
 }
 
 TEST(quotient_filter_fp, WorksWellWhenFull) {
-  const size_t q_bits = 10;
-  const size_t r_bits = 8;
-  const size_t fp_bits = q_bits + r_bits;
-  const value_t max_fp = max_value(fp_bits);
 
-  qfilter filter(q_bits, r_bits);
+  qfilter filter(10, 8); // q_bits and r_bits
   std::set<value_t> set;
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<value_t> dist(0, max_fp);
+  auto gen_fp = make_fp_generator(filter);
 
   while (!filter.full()) {
-    const auto fp = dist(gen);
+    const auto fp = gen_fp();
     if (set.insert(fp).second)
       filter.insert(fp);
   }
@@ -148,23 +122,52 @@ TEST(quotient_filter_fp, WorksWellWhenFull) {
   EXPECT_EQ(0, filter.size());
 }
 
-TEST(iterator, WorksWell) {
-  const size_t q_bits = 11;
-  const size_t r_bits = 6;
-  const size_t fp_bits = q_bits + r_bits;
-  const value_t max_fp = max_value(fp_bits);
+TEST(quotient_filter_fp, ClearWorksWell) {
+  qfilter filter(9, 6); // q_bits and r_bits
+  auto gen_fp = make_fp_generator(filter);
+  repeat(filter.capacity(), [&] { filter.insert(gen_fp()); });
 
-  qfilter filter(q_bits, r_bits);
+  const auto prev_q = filter.quotient_bits();
+  const auto prev_r = filter.remainder_bits();
+  const auto prev_cap = filter.capacity();
+  filter.clear();
+
+  EXPECT_EQ(prev_cap, filter.capacity());
+  EXPECT_EQ(prev_q, filter.quotient_bits());
+  EXPECT_EQ(prev_r, filter.remainder_bits());
+  EXPECT_TRUE(filter.empty());
+  EXPECT_FALSE(filter.full());
+  EXPECT_TRUE(filter.begin() == filter.end());
+
+  filter.insert(5);
+  auto first = filter.begin();
+  EXPECT_NE(first++, filter.end());
+  EXPECT_EQ(first, filter.end());
+  EXPECT_TRUE(filter.erase(5));
+
+  std::set<value_t> set;
+  while (!filter.full()) {
+    const auto fp = gen_fp();
+    if (set.insert(fp).second)
+      EXPECT_TRUE(filter.insert(fp).second);
+  }
+
+  for (value_t fp : set)
+    EXPECT_TRUE(filter.erase(fp));
+
+  EXPECT_TRUE(filter.empty());
+}
+
+TEST(iterator, WorksWell) {
+  qfilter filter(11, 6); // q_bits and r_bits
   std::set<value_t> set;
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<value_t> dist(0, max_fp);
+  auto gen_fp = make_fp_generator(filter);
 
   repeat(filter.capacity(), [&] {
-    const auto new_value = dist(gen);
-    filter.insert(new_value);
-    set.insert(new_value);
+    const auto fp = gen_fp();
+    filter.insert(fp);
+    set.insert(fp);
   });
 
   EXPECT_EQ(*filter.begin(), *set.begin());

@@ -1,5 +1,10 @@
+//          Copyright Diego Ramírez July 2015
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+
 #include <quofil/quotient_filter_fp.hpp>
-#include <algorithm>   // for std::min
+#include <algorithm>   // for std::min, std::fill
 #include <limits>      // for std::numeric_limits
 #include <memory>      // for std::make_unique
 #include <type_traits> // for std::is_unsigned
@@ -27,6 +32,14 @@ static_assert(sizeof(block_type) >= sizeof(unsigned),
 
 static constexpr size_type bits_per_block =
     std::numeric_limits<block_type>::digits;
+
+// ==========================================
+// Exceptions.
+// ==========================================
+
+const char *quofil::filter_is_full::what() const noexcept {
+  return "The Quotient-Filter is full";
+}
 
 // ==========================================
 // Miscellaneous auxiliary functions
@@ -286,6 +299,13 @@ std::pair<qf_iterator, bool> qfilter::insert(const value_type fp) {
 // ==========================================
 // Deletion
 // ==========================================
+
+void qfilter::clear() noexcept {
+  std::fill(is_occupied.begin(), is_occupied.end(), false);
+  std::fill(is_continuation.begin(), is_continuation.end(), false);
+  std::fill(is_shifted.begin(), is_shifted.end(), false);
+  num_elements = 0;
+}
 
 void qfilter::remove_entry(const size_type remove_pos,
                            const size_type canonical_pos) noexcept {
