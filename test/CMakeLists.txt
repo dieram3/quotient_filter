@@ -19,4 +19,4 @@ function(add_unittest TEST_NAME)
   add_test(NAME ${TEST_NAME} COMMAND ${TARGET_ID})
 endfunction()
 
-add_unittest("quofil" "quotient_filter_test.cpp")
+add_unittest("quofil" "quotient_filter_fp_test.cpp")

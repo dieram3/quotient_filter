@@ -21,22 +21,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 /// \file
-/// \brief Contains the quotient_filter template class.
+/// \brief Defines the quotient_filter_fp class.
 
 #ifndef QUOFIL_QUOTIENT_FILTER_HPP
 #define QUOFIL_QUOTIENT_FILTER_HPP
 
-#include <exception>  // for std::exception
-#include <iterator>   // for std::forward_iterator_tag
-#include <functional> // for std::hash
-#include <memory>     // for std::unique_ptr
-#include <utility>    // for std::pair
-#include <vector>     // for std::vector
-#include <cassert>    // for assert
-#include <cstddef>    // for std::size_t, std::ptrdiff_t
+#include <exception> // for std::exception
+#include <iterator>  // for std::forward_iterator_tag
+#include <memory>    // for std::unique_ptr
+#include <utility>   // for std::pair
+#include <vector>    // for std::vector
+#include <cassert>   // for assert
+#include <cstddef>   // for std::size_t, std::ptrdiff_t
 
 namespace quofil {
 
+/// \brief Exception thrown when an insertion on a full filter is attempted.
 struct filter_is_full : public std::exception {
 public:
   const char *what() const noexcept override;
@@ -46,6 +46,7 @@ public:
 class quotient_filter_fp {
 public:
   using value_type = unsigned long long;
+  using size_type = std::size_t;
   class iterator;
   using const_iterator = iterator;
   friend class iterator;
@@ -63,7 +64,7 @@ public:
   ///
   /// \pre \p r shall positive.
   ///
-  quotient_filter_fp(std::size_t q, std::size_t r);
+  quotient_filter_fp(size_type q, size_type r);
 
   /// \brief Searchs for a given fingerprint.
   /// \param fp The fingerprint to be searched.
@@ -74,7 +75,7 @@ public:
   /// \brief Counts how many times a fingerprint is contained into the filter.
   ///
   /// Effectively returns 0 or 1.
-  std::size_t count(value_type fp) const noexcept;
+  size_type count(value_type fp) const noexcept;
 
   /// \brief Inserts the given fingerprint into the filter.
   ///
@@ -87,13 +88,26 @@ public:
   /// insertion took place.
   ///
   /// \throws filter_is_full if \c *this is full.
+  ///
   std::pair<iterator, bool> insert(value_type fp);
 
+  /// \brief Erases the given element.
+  ///
+  /// Invalidates all iterators.
+  ///
   void erase(iterator pos) noexcept;
-  std::size_t erase(value_type fp) noexcept;
+
+  /// \brief Erases the given fingerprint if it exists.
+  ///
+  /// If the fingerprint was found, all iterators are invalidated.
+  ///
+  /// \param fp The fingerprint to be erased.
+  ///
+  /// \returns The number of erased elements, effectively 0 or 1.
+  size_type erase(value_type fp) noexcept;
 
   /// \brief Returns the number of elements in the quotient filter.
-  std::size_t size() const noexcept { return num_elements; }
+  size_type size() const noexcept { return num_elements; }
 
   /// \brief Checks whether the quotient filter is empty.
   bool empty() const noexcept { return num_elements == 0; }
@@ -104,50 +118,48 @@ public:
 
   /// \brief Returns the maximum number of elements which the quotient filter
   /// can hold.
-  std::size_t capacity() const noexcept { return num_slots; }
+  size_type capacity() const noexcept { return num_slots; }
 
   /// \brief Returns the number of bits used for the quotient.
-  std::size_t quotient_bits() const noexcept { return q_bits; }
+  size_type quotient_bits() const noexcept { return q_bits; }
 
   /// \brief Returns the number of bits used for the remainder.
-  std::size_t remainder_bits() const noexcept { return r_bits; }
+  size_type remainder_bits() const noexcept { return r_bits; }
 
   /// \brief Returns an iterator to the beginning of the filter.
   const_iterator begin() const noexcept;
 
   /// \brief Returns an iterator to the end of the filter.
+  /// \note The end iterator is never invalidated.
   const_iterator end() const noexcept;
 
 private:
-  value_type get_remainder(std::size_t) const noexcept;
-  void set_remainder(std::size_t, value_type) noexcept;
-  value_type exchange_remainder(std::size_t, value_type) noexcept;
+  value_type get_remainder(size_type) const noexcept;
+  void set_remainder(size_type, value_type) noexcept;
+  value_type exchange_remainder(size_type, value_type) noexcept;
 
-  std::size_t incr_pos(std::size_t) const noexcept;
-  std::size_t decr_pos(std::size_t) const noexcept;
+  size_type incr_pos(size_type) const noexcept;
+  size_type decr_pos(size_type) const noexcept;
 
   value_type extract_quotient(value_type) const noexcept;
   value_type extract_remainder(value_type) const noexcept;
 
-  std::size_t find_next_occupied(std::size_t) const noexcept;
-  std::size_t find_next_run(std::size_t) const noexcept;
-  std::size_t find_run_of(value_type) const noexcept;
+  size_type find_next_occupied(size_type) const noexcept;
+  size_type find_next_run_quotient(size_type) const noexcept;
+  size_type find_run_start(size_type) const noexcept;
 
-  void insert_into(std::size_t, value_type, bool) noexcept;
-  void remove_entry(std::size_t, std::size_t) noexcept;
+  void insert_into(size_type, value_type, bool) noexcept;
+  void remove_entry(size_type, size_type) noexcept;
 
-  bool is_empty_slot(std::size_t) const noexcept;
-  bool is_run_start(std::size_t) const noexcept;
+  bool is_empty_slot(size_type) const noexcept;
 
 private:
-  std::size_t q_bits;
-  std::size_t r_bits;
-  std::size_t num_slots;
-  std::size_t num_elements;
+  size_type q_bits;
+  size_type r_bits;
+  size_type num_slots;
+  size_type num_elements;
   value_type q_mask;
   value_type r_mask;
-  // std::vector<bool> flags; // TODO:Benchmark on separated vector bool for
-  // flags.
   std::vector<bool> is_occupied;
   std::vector<bool> is_continuation;
   std::vector<bool> is_shifted;
@@ -155,9 +167,9 @@ private:
 };
 
 /// \brief Iterator to navigate through the elements of a quotient filter.
-
 class quotient_filter_fp::iterator {
   friend class quotient_filter_fp;
+  using size_type = quotient_filter_fp::size_type;
 
 public:
   using value_type = quotient_filter_fp::value_type;
@@ -189,7 +201,7 @@ public:
 
 private:
   explicit iterator(const quotient_filter_fp *) noexcept;
-  iterator(const quotient_filter_fp *, size_t, value_type) noexcept;
+  iterator(const quotient_filter_fp *, size_type, size_type) noexcept;
 
   void increment() noexcept;
 
@@ -198,13 +210,14 @@ private:
   }
 
   reference dereference() const noexcept {
-    return (run_quotient << filter->r_bits) | filter->get_remainder(pos);
+    const auto quotient = static_cast<value_type>(canonical_pos);
+    return (quotient << filter->r_bits) | filter->get_remainder(pos);
   }
 
 private:
   const quotient_filter_fp *filter = nullptr;
-  size_t pos = 0;              // current position.
-  value_type run_quotient = 0; // quotient of current run.
+  size_type pos = 0;           // Current position.
+  size_type canonical_pos = 0; // Where the remainder should be.
 };
 
 inline quotient_filter_fp::iterator quotient_filter_fp::begin() const noexcept {
@@ -213,16 +226,17 @@ inline quotient_filter_fp::iterator quotient_filter_fp::begin() const noexcept {
 inline quotient_filter_fp::iterator quotient_filter_fp::end() const noexcept {
   return iterator();
 }
-inline std::size_t quotient_filter_fp::count(value_type fp) const noexcept {
+inline quotient_filter_fp::size_type
+quotient_filter_fp::count(value_type fp) const noexcept {
   return find(fp) != end();
 }
 inline void quotient_filter_fp::erase(iterator slot_iterator) noexcept {
   assert(slot_iterator.filter == this);
-  remove_entry(slot_iterator.pos,
-               static_cast<size_t>(slot_iterator.run_quotient));
+  remove_entry(slot_iterator.pos, slot_iterator.canonical_pos);
   --num_elements;
 }
-inline std::size_t quotient_filter_fp::erase(value_type fp) noexcept {
+inline quotient_filter_fp::size_type
+quotient_filter_fp::erase(value_type fp) noexcept {
   const auto it = find(fp);
   if (it == end())
     return 0;

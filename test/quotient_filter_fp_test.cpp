@@ -21,7 +21,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <quofil/quotient_filter.hpp>
+#include <quofil/quotient_filter_fp.hpp>
 #include <gtest/gtest.h>
 
 #include <algorithm> // for std::equal
@@ -34,7 +34,7 @@
 
 #include <unordered_set>
 using qfilter = quofil::quotient_filter_fp;
-using ulong = unsigned long;
+using value_t = qfilter::value_type;
 
 template <class Function>
 static void repeat(std::size_t n, Function f) {
@@ -43,21 +43,21 @@ static void repeat(std::size_t n, Function f) {
 }
 
 // Returns the max value representable with the given bits.
-static ulong max_value(std::size_t bits) { return (1UL << bits) - 1; }
+static value_t max_value(std::size_t bits) { return (value_t{1} << bits) - 1; }
 
 TEST(quotient_filter_fp, WorksWell) {
   const size_t q_bits = 13;
   const size_t r_bits = 5;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = max_value(fp_bits);
+  const value_t max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
-  std::set<ulong> set;
+  std::set<value_t> set;
 
   const size_t max_elements_to_insert = filter.capacity() / 2;
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<ulong> dist(0, max_fp);
+  std::uniform_int_distribution<value_t> dist(0, max_fp);
 
   for (size_t i = 0; i != max_elements_to_insert; ++i) {
     const auto fp = dist(gen);
@@ -69,7 +69,7 @@ TEST(quotient_filter_fp, WorksWell) {
 
   EXPECT_EQ(filter.size(), set.size());
 
-  for (ulong value : set)
+  for (value_t value : set)
     EXPECT_TRUE(filter.count(value));
 
   repeat(10000, [&] {
@@ -82,10 +82,10 @@ TEST(quotient_filter_fp, InsertionDeletionQueryTest) {
   const size_t q_bits = 13;
   const size_t r_bits = 2;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = max_value(fp_bits);
+  const value_t max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
-  std::set<ulong> set;
+  std::set<value_t> set;
 
   std::random_device rd;
   std::mt19937 fp_gen(rd());
@@ -93,7 +93,7 @@ TEST(quotient_filter_fp, InsertionDeletionQueryTest) {
 
   std::bernoulli_distribution insert_dist;
   using param_t = std::bernoulli_distribution::param_type;
-  std::uniform_int_distribution<ulong> fp_dist(0, max_fp);
+  std::uniform_int_distribution<value_t> fp_dist(0, max_fp);
 
   repeat(3 * filter.capacity(), [&] {
     const double load_factor = double(filter.size()) / filter.capacity();
@@ -123,14 +123,14 @@ TEST(quotient_filter_fp, WorksWellWhenFull) {
   const size_t q_bits = 10;
   const size_t r_bits = 8;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = max_value(fp_bits);
+  const value_t max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
-  std::set<ulong> set;
+  std::set<value_t> set;
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<ulong> dist(0, max_fp);
+  std::uniform_int_distribution<value_t> dist(0, max_fp);
 
   while (!filter.full()) {
     const auto fp = dist(gen);
@@ -152,14 +152,14 @@ TEST(iterator, WorksWell) {
   const size_t q_bits = 11;
   const size_t r_bits = 6;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = max_value(fp_bits);
+  const value_t max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
-  std::set<ulong> set;
+  std::set<value_t> set;
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<ulong> dist(0, max_fp);
+  std::uniform_int_distribution<value_t> dist(0, max_fp);
 
   repeat(filter.capacity(), [&] {
     const auto new_value = dist(gen);
@@ -172,4 +172,15 @@ TEST(iterator, WorksWell) {
 
   auto it = std::next(set.begin(), set.size() / 2);
   EXPECT_TRUE(std::equal(filter.find(*it), filter.end(), it, set.end()));
+}
+
+TEST(iterator, ContructorWorksWell) {
+  qfilter filter(4, 4);
+  const unsigned value1 = 3;
+  filter.insert(value1); // Should be in the first slot.
+  EXPECT_EQ(value1, *filter.begin());
+  EXPECT_TRUE(filter.erase(value1));
+  const unsigned value2 = 0b11'1111;
+  filter.insert(value2);
+  EXPECT_EQ(value2, *filter.begin());
 }
