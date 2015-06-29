@@ -42,11 +42,14 @@ static void repeat(std::size_t n, Function f) {
     f();
 }
 
+// Returns the max value representable with the given bits.
+static ulong max_value(std::size_t bits) { return (1UL << bits) - 1; }
+
 TEST(quotient_filter_fp, WorksWell) {
   const size_t q_bits = 13;
   const size_t r_bits = 5;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = (1UL << fp_bits) - 1;
+  const ulong max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
   std::set<ulong> set;
@@ -75,11 +78,81 @@ TEST(quotient_filter_fp, WorksWell) {
   });
 }
 
+TEST(quotient_filter_fp, InsertionDeletionQueryTest) {
+  const size_t q_bits = 13;
+  const size_t r_bits = 2;
+  const size_t fp_bits = q_bits + r_bits;
+  const ulong max_fp = max_value(fp_bits);
+
+  qfilter filter(q_bits, r_bits);
+  std::set<ulong> set;
+
+  std::random_device rd;
+  std::mt19937 fp_gen(rd());
+  std::default_random_engine bern_gen(rd());
+
+  std::bernoulli_distribution insert_dist;
+  using param_t = std::bernoulli_distribution::param_type;
+  std::uniform_int_distribution<ulong> fp_dist(0, max_fp);
+
+  repeat(3 * filter.capacity(), [&] {
+    const double load_factor = double(filter.size()) / filter.capacity();
+    const bool do_insertion =
+        filter.empty()
+            ? true
+            : filter.full() ? false
+                            : insert_dist(bern_gen, param_t(1.0 - load_factor));
+
+    const auto fp = fp_dist(fp_gen);
+
+    if (do_insertion) {
+      const auto pfilter = filter.insert(fp);
+      const auto pset = set.insert(fp);
+      EXPECT_EQ(pset.second, pfilter.second);
+      EXPECT_EQ(fp, *pfilter.first);
+    } else {
+      const auto ans_filter = filter.erase(fp);
+      const auto ans_set = set.erase(fp);
+      EXPECT_EQ(ans_set, ans_filter);
+    }
+    EXPECT_EQ(set.size(), filter.size());
+  });
+}
+
+TEST(quotient_filter_fp, WorksWellWhenFull) {
+  const size_t q_bits = 10;
+  const size_t r_bits = 8;
+  const size_t fp_bits = q_bits + r_bits;
+  const ulong max_fp = max_value(fp_bits);
+
+  qfilter filter(q_bits, r_bits);
+  std::set<ulong> set;
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<ulong> dist(0, max_fp);
+
+  while (!filter.full()) {
+    const auto fp = dist(gen);
+    if (set.insert(fp).second)
+      filter.insert(fp);
+  }
+
+  EXPECT_EQ(filter.capacity(), filter.size());
+  EXPECT_THROW(filter.insert(*set.begin()), quofil::filter_is_full);
+
+  for (auto fp : set)
+    EXPECT_TRUE(filter.erase(fp));
+
+  EXPECT_TRUE(filter.empty());
+  EXPECT_EQ(0, filter.size());
+}
+
 TEST(iterator, WorksWell) {
   const size_t q_bits = 11;
   const size_t r_bits = 6;
   const size_t fp_bits = q_bits + r_bits;
-  const ulong max_fp = (1UL << fp_bits) - 1;
+  const ulong max_fp = max_value(fp_bits);
 
   qfilter filter(q_bits, r_bits);
   std::set<ulong> set;

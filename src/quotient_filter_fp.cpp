@@ -15,6 +15,8 @@ using qfilter = ::quofil::quotient_filter_fp;
 using qf_iterator = qfilter::iterator;
 
 using std::size_t;
+using std::make_pair;
+
 using value_type = qfilter::value_type;
 using block_type = value_type;
 
@@ -60,13 +62,6 @@ bool qfilter::is_empty_slot(size_t pos) const noexcept {
 bool qfilter::is_run_start(size_t pos) const noexcept {
   return !is_continuation[pos] && (is_shifted[pos] || is_occupied[pos]);
 }
-
-// Returns true if the slot at pos is the beginning of a cluster.
-// static constexpr bool is_cluster_start(const std::vector<bool> &flags,
-//                                       size_t pos) {
-//  return is_ocuppied(flags, pos) && !is_continuation(flags, pos) &&
-//         !is_shifted(flags, pos);
-//}
 
 // ==========================================
 // Data access functions
@@ -122,11 +117,11 @@ value_type qfilter::exchange_remainder(size_t pos,
 // Slot navigation
 // ==========================================
 
-size_t qfilter::next_pos(const size_t pos) const noexcept {
+size_t qfilter::incr_pos(const size_t pos) const noexcept {
   return (pos + 1) & q_mask;
 }
 
-size_t qfilter::prev_pos(const size_t pos) const noexcept {
+size_t qfilter::decr_pos(const size_t pos) const noexcept {
   return (pos - 1) & q_mask;
 }
 
@@ -134,11 +129,11 @@ size_t qfilter::prev_pos(const size_t pos) const noexcept {
 // Parts of finger print
 // ==========================================
 
-value_type qfilter::quotient_part(value_type fp) const noexcept {
+value_type qfilter::extract_quotient(value_type fp) const noexcept {
   return (fp >> r_bits) & q_mask;
 }
 
-value_type qfilter::remainder_part(value_type fp) const noexcept {
+value_type qfilter::extract_remainder(value_type fp) const noexcept {
   return fp & r_mask;
 }
 
@@ -161,9 +156,28 @@ qfilter::quotient_filter_fp(size_t q, size_t r)
 // Search
 // ==========================================
 
+size_t qfilter::find_next_occupied(size_t pos) const noexcept {
+  assert(is_occupied[pos]);
+  do
+    pos = incr_pos(pos);
+  while (!is_occupied[pos]);
+  return pos;
+}
+
+// Finds the position of the first slot of the next run in the cluster.
+size_t qfilter::find_next_run(size_t run_pos) const noexcept {
+  assert(is_run_start(run_pos));
+  do
+    run_pos = incr_pos(run_pos);
+  while (is_continuation[run_pos]);
+
+  assert(is_run_start(run_pos) || is_empty_slot(run_pos));
+  return run_pos;
+}
+
 // Find the position of the first slot of the run given in the argument.
 // The run must exists.
-size_t qfilter::find_run(const value_type quotient) const noexcept {
+size_t qfilter::find_run_of(const value_type quotient) const noexcept {
   size_t pos = static_cast<size_t>(quotient);
   assert(is_occupied[pos]);
 
@@ -174,25 +188,21 @@ size_t qfilter::find_run(const value_type quotient) const noexcept {
   // Find the beginning of the cluster.
   size_t running_count = 0;
   do {
-    pos = prev_pos(pos);
+    pos = decr_pos(pos);
     running_count += is_occupied[pos];
   } while (is_shifted[pos]);
 
   // Find the beginning of the target run.
-  for (; running_count; --running_count) {
-    // Advance to the next run.
-    do {
-      pos = next_pos(pos);
-    } while (is_continuation[pos]);
-  }
+  for (; running_count; --running_count)
+    pos = find_next_run(pos);
 
   return pos;
 }
 
-qf_iterator qfilter::find(value_type fp) const noexcept {
+qf_iterator qfilter::find(const value_type fp) const noexcept {
 
-  const auto fp_quotient = quotient_part(fp);
-  const auto fp_remainder = remainder_part(fp);
+  const auto fp_quotient = extract_quotient(fp);
+  const auto fp_remainder = extract_remainder(fp);
   const size_t canonical_slot_pos = static_cast<size_t>(fp_quotient);
 
   // If the quotient has no run, fp can't exist.
@@ -200,14 +210,14 @@ qf_iterator qfilter::find(value_type fp) const noexcept {
     return end();
 
   // Search on the sorted run for fp_remainder.
-  size_t pos = find_run(fp_quotient);
+  size_t pos = find_run_of(fp_quotient);
   do {
     const auto remainder = get_remainder(pos);
     if (remainder == fp_remainder)
       return iterator{this, pos, fp_quotient};
     if (remainder > fp_remainder)
       return end();
-    pos = next_pos(pos);
+    pos = incr_pos(pos);
   } while (is_continuation[pos]);
   return end();
 }
@@ -230,25 +240,24 @@ void qfilter::insert_into(size_t pos, value_type remainder,
     continuation = exchange(is_continuation[pos], continuation);
     remainder = exchange_remainder(pos, remainder);
     is_shifted[pos] = true;
-    pos = next_pos(pos);
+    pos = incr_pos(pos);
   } while (!found_empty_slot);
 }
 
-std::pair<qf_iterator, bool> qfilter::insert(value_type fp) {
+std::pair<qf_iterator, bool> qfilter::insert(const value_type fp) {
 
   if (full())
     throw quofil::filter_is_full();
 
-  const auto fp_quotient = quotient_part(fp);
-  const auto fp_remainder = remainder_part(fp);
+  const auto fp_quotient = extract_quotient(fp);
+  const auto fp_remainder = extract_remainder(fp);
   const size_t canonical_slot_pos = static_cast<size_t>(fp_quotient);
 
   if (is_empty_slot(canonical_slot_pos)) {
     is_occupied[canonical_slot_pos] = true;
     set_remainder(canonical_slot_pos, fp_remainder);
     ++num_elements;
-    return std::make_pair(iterator{this, canonical_slot_pos, fp_quotient},
-                          true);
+    return make_pair(iterator{this, canonical_slot_pos, fp_quotient}, true);
   }
 
   // Indicates that the run has no element. However the slot of the run start
@@ -257,7 +266,7 @@ std::pair<qf_iterator, bool> qfilter::insert(value_type fp) {
   if (run_is_empty)
     is_occupied[canonical_slot_pos] = true;
 
-  size_t pos = find_run(fp_quotient);
+  size_t pos = find_run_of(fp_quotient);
   const size_t run_start = pos;
 
   // Search the correct position.
@@ -265,10 +274,10 @@ std::pair<qf_iterator, bool> qfilter::insert(value_type fp) {
     do {
       const auto remainder = get_remainder(pos);
       if (remainder == fp_remainder)
-        return std::make_pair(iterator{this, pos, fp_quotient}, false);
+        return make_pair(iterator{this, pos, fp_quotient}, false);
       if (remainder > fp_remainder)
         break;
-      pos = next_pos(pos);
+      pos = incr_pos(pos);
     } while (is_continuation[pos]);
 
     if (pos == run_start) {
@@ -281,18 +290,69 @@ std::pair<qf_iterator, bool> qfilter::insert(value_type fp) {
     is_shifted[pos] = false;
 
   ++num_elements;
-  return std::make_pair(iterator{this, pos, fp_quotient}, true);
+  return make_pair(iterator{this, pos, fp_quotient}, true);
+}
+
+// ==========================================
+// Deletion
+// ==========================================
+
+void qfilter::remove_entry(const size_t remove_pos,
+                           const size_t canonical_slot_pos) noexcept {
+  assert(!is_empty_slot(remove_pos));
+  assert(is_occupied[canonical_slot_pos]);
+
+  const bool was_head = !is_continuation[remove_pos];
+
+  // First, move the elements to the left.
+  size_t current_pos = remove_pos;
+  size_t quotient_pos = canonical_slot_pos; // quotient of current_pos
+
+  while (true) {
+    const size_t next_pos = incr_pos(current_pos);
+
+    if (!is_shifted[next_pos])
+      break;
+
+    set_remainder(current_pos, get_remainder(next_pos));
+    is_continuation[current_pos] = is_continuation[next_pos];
+
+    // Check for possible new cluster.
+    if (!is_continuation[current_pos]) {
+      quotient_pos = find_next_occupied(quotient_pos);
+      assert(quotient_pos != next_pos);
+      if (quotient_pos == current_pos)
+        is_shifted[current_pos] = false;
+    }
+
+    current_pos = next_pos;
+  }
+
+  // Now the variable current_pos points to the last slot of the cluster.
+  // The last slot becomes empty.
+  is_shifted[current_pos] = false;
+  is_continuation[current_pos] = false;
+
+  // The last element of a cluster is never ocuppied at least that it is the
+  // only element of the cluster.
+  assert(!is_occupied[current_pos] ||
+         current_pos == remove_pos && remove_pos == canonical_slot_pos);
+
+  if (was_head) {
+    if (is_continuation[remove_pos])
+      is_continuation[remove_pos] = false; // And the run still exists.
+    else
+      is_occupied[canonical_slot_pos] = false;
+  }
+  // is_shifted[remove_pos] could be true or false. Anyway, the new occupant
+  // takes the role so is_shifted[remove_pos] remains unmodificated.
 }
 
 // ==========================================
 // Iterator
 // ==========================================
 
-void qf_iterator::update_value() noexcept {
-  value = (run_quotient << filter->r_bits) | filter->get_remainder(pos);
-}
-
-qf_iterator::iterator(const qfilter *the_filter) noexcept {
+qf_iterator::iterator(const qfilter *const the_filter) noexcept {
   assert(the_filter != nullptr);
 
   if (the_filter->empty())
@@ -305,26 +365,23 @@ qf_iterator::iterator(const qfilter *the_filter) noexcept {
     ++quotient_pos;
 
   run_quotient = static_cast<value_type>(quotient_pos);
-  pos = filter->find_run(run_quotient);
-
-  update_value();
+  pos = filter->find_run_of(run_quotient);
 }
 
-qf_iterator::iterator(const qfilter *filter_, const size_t pos_,
-                      value_type run_quotient_) noexcept
+qf_iterator::iterator(const qfilter *const filter_, const size_t pos_,
+                      const value_type run_quotient_) noexcept
     : filter{filter_},
       pos{pos_},
       run_quotient{run_quotient_} {
-  update_value();
+  assert(filter_ != nullptr);
 }
 
 void qf_iterator::increment() noexcept {
   assert(filter && "Can't increment end iterator");
 
-  pos = filter->next_pos(pos);
+  pos = filter->incr_pos(pos);
 
   if (filter->is_continuation[pos]) {
-    update_value();
     return;
   }
 
@@ -344,8 +401,6 @@ void qf_iterator::increment() noexcept {
   run_quotient = static_cast<value_type>(quotient_pos);
 
   while (!filter->is_run_start(pos)) {
-    pos = filter->next_pos(pos);
+    pos = filter->incr_pos(pos);
   }
-
-  update_value();
 }
