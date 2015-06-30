@@ -6,7 +6,6 @@
 #include <quofil/quotient_filter_fp.hpp>
 #include <algorithm>   // for std::min, std::fill
 #include <limits>      // for std::numeric_limits
-#include <memory>      // for std::make_unique
 #include <type_traits> // for std::is_unsigned
 #include <cassert>     // for assert
 
@@ -50,8 +49,9 @@ static constexpr size_type ceil_div(size_type x, size_type y) noexcept {
   return x / y + size_type(x % y == 0 ? 0 : 1);
 }
 
-static constexpr block_type low_mask(size_type num_bits) noexcept {
-  return ~(~static_cast<block_type>(0) << num_bits);
+template <class T = value_type>
+static constexpr T low_mask(size_type num_bits) noexcept {
+  return ~(~T{0} << num_bits);
 }
 
 // ==========================================
@@ -82,10 +82,10 @@ value_type qfilter::get_remainder(const size_type pos) const noexcept {
   size_type pending_bits = r_bits;
   size_type bits_to_read = std::min(pending_bits, bits_per_block - offset);
 
-  value_type ans = (data[block] >> offset) & low_mask(bits_to_read);
+  value_type ans = (data[block] >> offset) & low_mask<value_type>(bits_to_read);
   pending_bits -= bits_to_read;
   if (pending_bits) {
-    value_type next = data[block + 1] & low_mask(pending_bits);
+    value_type next = data[block + 1] & low_mask<value_type>(pending_bits);
     ans |= next << bits_to_read;
   }
   return ans;
@@ -104,12 +104,12 @@ void qfilter::set_remainder(const size_type pos,
   size_type pending_bits = r_bits;
   size_type bits_to_write = std::min(pending_bits, bits_per_block - offset);
 
-  data[block] &= ~(low_mask(bits_to_write) << offset);
+  data[block] &= ~(low_mask<value_type>(bits_to_write) << offset);
   data[block] |= value << offset;
 
   pending_bits -= bits_to_write;
   if (pending_bits) {
-    data[block + 1] &= ~low_mask(pending_bits);
+    data[block + 1] &= ~low_mask<value_type>(pending_bits);
     data[block + 1] |= value >> bits_to_write;
   }
 }
@@ -124,6 +124,31 @@ value_type qfilter::exchange_remainder(size_type pos,
 // ==========================================
 // Slot navigation
 // ==========================================
+
+namespace {
+class position {
+  position(const qfilter &qf, size_type pos_) noexcept
+      : pos{pos_},
+        mask{low_mask<size_type>(qf.quotient_bits())} {}
+
+  void incr() noexcept {
+    ++pos;
+    pos &= mask;
+  }
+
+  void decr() noexcept {
+    --pos;
+    pos &= mask;
+  }
+
+  operator size_type() const noexcept { return pos; }
+
+private:
+  size_type pos;
+  size_type mask;
+};
+
+} // End anonymous namespace
 
 size_type qfilter::incr_pos(const size_type pos) const noexcept {
   return (pos + 1) & static_cast<size_type>(q_mask);
@@ -156,7 +181,7 @@ qfilter::quotient_filter_fp(size_type q, size_type r)
   assert(r != 0 && "The remainder must have at least one bit");
   const size_type required_bits = r_bits * num_slots;
   const size_type required_blocks = ceil_div(required_bits, bits_per_block);
-  data = std::make_unique<block_type[]>(required_blocks);
+  data.resize(required_blocks);
 }
 
 // ==========================================

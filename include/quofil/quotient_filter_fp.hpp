@@ -10,7 +10,6 @@
 
 #include <exception> // for std::exception
 #include <iterator>  // for std::forward_iterator_tag
-#include <memory>    // for std::unique_ptr
 #include <utility>   // for std::pair
 #include <vector>    // for std::vector
 #include <cassert>   // for assert
@@ -27,13 +26,16 @@ public:
 /// \brief Quotient-Filter implementation class.
 class quotient_filter_fp {
 public:
-  using value_type = unsigned long long;
+  using value_type = std::size_t; // std::hash evaluates to std::size_t
   using size_type = std::size_t;
   class iterator;
   using const_iterator = iterator;
   friend class iterator;
 
 public:
+  /// \brief Constructs a quotient filter with zero capacity.
+  quotient_filter_fp() = default;
+
   /// \brief Constructs a quotient filter using the given bits requirements.
   ///
   /// The constructed filter will use approximately <tt>(r + 3) * pow(2, q)</tt>
@@ -139,16 +141,16 @@ private:
   bool is_empty_slot(size_type) const noexcept;
 
 private:
-  size_type q_bits;
-  size_type r_bits;
-  size_type num_slots;
-  size_type num_elements;
-  value_type q_mask;
-  value_type r_mask;
+  size_type q_bits = 0;
+  size_type r_bits = 0;
+  size_type num_slots = 0;
+  size_type num_elements = 0;
+  value_type q_mask = 0;
+  value_type r_mask = 0;
   std::vector<bool> is_occupied;
   std::vector<bool> is_continuation;
   std::vector<bool> is_shifted;
-  std::unique_ptr<value_type[]> data;
+  std::vector<value_type> data;
 };
 
 /// \brief Iterator to navigate through the elements of a quotient filter.
