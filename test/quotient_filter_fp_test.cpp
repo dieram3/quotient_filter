@@ -104,38 +104,47 @@ QFILTER_TEST(Can_mix_insertions_deletions_and_queries) {
     if (do_insertion()) {
       const auto pfilter = filter.insert(fp);
       const auto pset = set.insert(fp);
-      ASSERT_EQ(pset.second, pfilter.second);
-      ASSERT_EQ(fp, *pfilter.first);
-      ASSERT_TRUE(filter.find(fp) == pfilter.first);
+      EXPECT_EQ(pset.second, pfilter.second);
+      EXPECT_EQ(fp, *pfilter.first);
+      EXPECT_EQ(pfilter.first, filter.find(fp));
     } else {
       const auto ans_filter = filter.erase(fp);
       const auto ans_set = set.erase(fp);
-      ASSERT_EQ(ans_set, ans_filter);
-      ASSERT_FALSE(filter.count(fp));
+      EXPECT_EQ(ans_set, ans_filter);
+      EXPECT_FALSE(filter.count(fp));
     }
-    ASSERT_EQ(set.size(), filter.size());
+    EXPECT_EQ(set.size(), filter.size());
   });
 
   for (value_t value : set)
-    ASSERT_TRUE(filter.count(value));
+    EXPECT_TRUE(filter.count(value));
 
   repeat(10000, [&] {
     const auto fp = gen_fp();
-    ASSERT_EQ(set.count(fp), filter.count(fp));
+    EXPECT_EQ(set.count(fp), filter.count(fp));
   });
 }
 
-QFILTER_TEST(Works_as_expected_if_full) {
+QFILTER_TEST(Can_be_empty_and_full) {
 
   qfilter filter(10, 8); // q_bits, r_bits
+  const auto capacity = filter.capacity();
+
   populate(filter);
   set_t set(filter.begin(), filter.end());
 
-  ASSERT_TRUE(filter.full());
-  EXPECT_THROW(filter.insert(*set.begin()), quofil::filter_is_full);
+  EXPECT_TRUE(filter.full());
+  EXPECT_EQ(capacity, filter.capacity());
+  EXPECT_EQ(capacity, filter.size());
 
-  for (const value_t fp : set)
-    ASSERT_TRUE(filter.erase(fp));
+  EXPECT_THROW(filter.insert(*set.begin()), quofil::filter_is_full);
+  EXPECT_TRUE(filter.full());
+
+  for (const value_t fp : set) {
+    EXPECT_FALSE(filter.empty());
+    EXPECT_TRUE(filter.erase(fp));
+    EXPECT_FALSE(filter.full());
+  }
 
   EXPECT_TRUE(filter.empty());
 }
