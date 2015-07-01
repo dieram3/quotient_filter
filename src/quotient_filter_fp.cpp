@@ -26,7 +26,7 @@ static_assert(std::is_unsigned<block_type>::value,
               "The block-type must be unsigned.");
 
 static_assert(sizeof(block_type) >= sizeof(unsigned),
-              "The block-type must have a capacity equal to or greater than "
+              "block_type must have a capacity equal to or greater than "
               "'unsigned int'.");
 
 static constexpr size_type bits_per_block =
@@ -37,7 +37,7 @@ static constexpr size_type bits_per_block =
 // ==========================================
 
 const char *quofil::filter_is_full::what() const noexcept {
-  return "The Quotient-Filter is full";
+  return "Couln't insert: The Quotient-Filter is full";
 }
 
 // ==========================================
@@ -49,9 +49,8 @@ static constexpr size_type ceil_div(size_type x, size_type y) noexcept {
   return x / y + size_type(x % y == 0 ? 0 : 1);
 }
 
-template <class T = value_type>
-static constexpr T low_mask(size_type num_bits) noexcept {
-  return ~(~T{0} << num_bits);
+static constexpr value_type low_mask(size_type num_bits) noexcept {
+  return ~(~value_type{0} << num_bits);
 }
 
 // ==========================================
@@ -82,10 +81,10 @@ value_type qfilter::get_remainder(const size_type pos) const noexcept {
   size_type pending_bits = r_bits;
   size_type bits_to_read = std::min(pending_bits, bits_per_block - offset);
 
-  value_type ans = (data[block] >> offset) & low_mask<value_type>(bits_to_read);
+  value_type ans = (data[block] >> offset) & low_mask(bits_to_read);
   pending_bits -= bits_to_read;
   if (pending_bits) {
-    value_type next = data[block + 1] & low_mask<value_type>(pending_bits);
+    value_type next = data[block + 1] & low_mask(pending_bits);
     ans |= next << bits_to_read;
   }
   return ans;
@@ -95,7 +94,7 @@ value_type qfilter::get_remainder(const size_type pos) const noexcept {
 void qfilter::set_remainder(const size_type pos,
                             const value_type value) noexcept {
 
-  assert(value == (value & r_mask));
+  assert(value == (value & remainder_mask));
 
   const size_type num_bit = r_bits * pos;
   const size_type block = num_bit / bits_per_block;
@@ -104,12 +103,12 @@ void qfilter::set_remainder(const size_type pos,
   size_type pending_bits = r_bits;
   size_type bits_to_write = std::min(pending_bits, bits_per_block - offset);
 
-  data[block] &= ~(low_mask<value_type>(bits_to_write) << offset);
+  data[block] &= ~(low_mask(bits_to_write) << offset);
   data[block] |= value << offset;
 
   pending_bits -= bits_to_write;
   if (pending_bits) {
-    data[block + 1] &= ~low_mask<value_type>(pending_bits);
+    data[block + 1] &= ~low_mask(pending_bits);
     data[block + 1] |= value >> bits_to_write;
   }
 }
@@ -125,37 +124,12 @@ value_type qfilter::exchange_remainder(size_type pos,
 // Slot navigation
 // ==========================================
 
-namespace {
-class position {
-  position(const qfilter &qf, size_type pos_) noexcept
-      : pos{pos_},
-        mask{low_mask<size_type>(qf.quotient_bits())} {}
-
-  void incr() noexcept {
-    ++pos;
-    pos &= mask;
-  }
-
-  void decr() noexcept {
-    --pos;
-    pos &= mask;
-  }
-
-  operator size_type() const noexcept { return pos; }
-
-private:
-  size_type pos;
-  size_type mask;
-};
-
-} // End anonymous namespace
-
 size_type qfilter::incr_pos(const size_type pos) const noexcept {
-  return (pos + 1) & static_cast<size_type>(q_mask);
+  return (pos + 1) & static_cast<size_type>(quotient_mask);
 }
 
 size_type qfilter::decr_pos(const size_type pos) const noexcept {
-  return (pos - 1) & static_cast<size_type>(q_mask);
+  return (pos - 1) & static_cast<size_type>(quotient_mask);
 }
 
 // ==========================================
@@ -163,11 +137,11 @@ size_type qfilter::decr_pos(const size_type pos) const noexcept {
 // ==========================================
 
 value_type qfilter::extract_quotient(value_type fp) const noexcept {
-  return (fp >> r_bits) & q_mask;
+  return (fp >> r_bits) & quotient_mask;
 }
 
 value_type qfilter::extract_remainder(value_type fp) const noexcept {
-  return fp & r_mask;
+  return fp & remainder_mask;
 }
 
 // ==========================================
@@ -175,9 +149,10 @@ value_type qfilter::extract_remainder(value_type fp) const noexcept {
 // ==========================================
 
 qfilter::quotient_filter_fp(size_type q, size_type r)
-    : q_bits{q}, r_bits{r}, num_slots{size_type(1) << q}, num_elements{0},
-      q_mask{low_mask(q)}, r_mask{low_mask(r)}, is_occupied(num_slots),
-      is_continuation(num_slots), is_shifted(num_slots), data{} {
+    : q_bits{q}, r_bits{r}, num_slots{size_type{1} << q}, num_elements{0},
+      quotient_mask{low_mask(q)}, remainder_mask{low_mask(r)},
+      is_occupied(num_slots), is_continuation(num_slots), is_shifted(num_slots),
+      data{} {
   assert(r != 0 && "The remainder must have at least one bit");
   const size_type required_bits = r_bits * num_slots;
   const size_type required_blocks = ceil_div(required_bits, bits_per_block);
@@ -369,7 +344,7 @@ void qfilter::remove_entry(const size_type remove_pos,
   is_continuation[pos] = false;
 
   // The last element of a cluster is never ocuppied at least it is the only
-  // element of the cluster.
+  // element on the cluster.
   assert(!is_occupied[pos] || pos == remove_pos && pos == canonical_pos);
 
   if (was_head) {
@@ -415,7 +390,7 @@ void qf_iterator::increment() noexcept {
 
   canonical_pos = filter->find_next_run_quotient(canonical_pos);
 
-  // End was reached.
+  // If end was reached.
   if (canonical_pos == filter->num_slots) {
     filter = nullptr;
     pos = 0;
