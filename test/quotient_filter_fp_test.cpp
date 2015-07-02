@@ -1,4 +1,4 @@
-//          Copyright Diego Ramírez July 2015
+//          Copyright Diego Ramírez June 2015
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -31,13 +31,13 @@ using set_t = std::set<value_t>;
 // Utilities for tests.
 // ==========================================
 
-template <class Function>
+template <typename Function>
 static void repeat(size_t n, Function f) {
   while (n--)
     f();
 }
 
-template <class Range1, class Range2>
+template <typename Range1, typename Range2>
 static bool equal(const Range1 &lhs, const Range2 &rhs) {
   return std::equal(std::begin(lhs), std::end(lhs), std::begin(rhs),
                     std::end(rhs));
@@ -231,6 +231,17 @@ QFILTER_TEST(Can_be_moved) {
   // The old filter has invalid state but can be reassigned.
   filter = qfilter();
   EXPECT_TRUE(totally_equal(filter, qfilter()));
+}
+
+QFILTER_TEST(Can_be_operated_normally_if_default_constructed) {
+  qfilter filter;
+  constexpr value_t random_fp = 1234;
+  EXPECT_FALSE(filter.count(random_fp));
+  EXPECT_EQ(filter.end(), filter.find(random_fp));
+  EXPECT_THROW(filter.insert(random_fp), quofil::filter_is_full);
+  EXPECT_FALSE(filter.erase(random_fp));
+  filter.clear();
+  EXPECT_TRUE(totally_equal(qfilter(), filter));
 }
 
 // ==========================================

@@ -1,4 +1,4 @@
-//          Copyright Diego Ramírez July 2015
+//          Copyright Diego Ramírez June 2015
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -18,7 +18,7 @@
 namespace quofil {
 
 /// \brief Exception thrown when an insertion on a full filter is attempted.
-struct filter_is_full : public std::exception {
+class filter_is_full : public std::exception {
 public:
   const char *what() const noexcept override;
 };
