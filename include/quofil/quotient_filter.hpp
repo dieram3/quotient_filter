@@ -3,18 +3,18 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 /// \file
-/// \brief Defines the class quotient_filter
+/// \brief Defines the quotient_filter class.
 
 #ifndef QUOFIL_QUOTIENT_FILTER_HPP
 #define QUOFIL_QUOTIENT_FILTER_HPP
 
-#include <quofil/quotient_filter_fp.hpp> // for quofil::quotient_filter_hp
+#include <quofil/quotient_filter_fp.hpp> // for quofil::quotient_filter_fp
 
-#include <algorithm>        // for std::equal, std::min, std::max
+#include <algorithm>        // for std::{equal, min, max, for_each}
 #include <functional>       // for std::hash
 #include <initializer_list> // for std::initializer_list
 #include <limits>           // for std::numeric_limits
-#include <utility>          // for std::pair, std::move, std::swap
+#include <utility>          // for std::{pair, move, swap}
 #include <cassert>          // for assert
 #include <cmath>            // for std::ceil
 #include <cstddef>          // for std::size_t
@@ -53,8 +53,9 @@ public:
     insert(first, last);
   }
 
-  quotient_filter(std::initializer_list<value_type> init, size_type min_cap = 0)
-      : quotient_filter(init.begin(), init.end(), min_cap) {}
+  quotient_filter(std::initializer_list<value_type> init, size_type min_cap = 0,
+                  const Hash &hash = Hash())
+      : quotient_filter(init.begin(), init.end(), min_cap, hash) {}
 
   // Iterators
   const_iterator begin() const noexcept { return filter.begin(); }
@@ -226,7 +227,7 @@ void quotient_filter<Key, Hash, Bits>::reserve(size_type count) {
   for (const auto fingerprint : filter)
     temp.insert(fingerprint);
 
-  // Everthing is ok.
+  // Everything is ok.
   assert(temp.size() == filter.size());
 
   filter = std::move(temp);
