@@ -10,9 +10,13 @@
 #include <iterator>  // for std::begin, std::end, std::next
 #include <numeric>   // for std::numeric_limits
 #include <random>    // for std::mt19937
-#include <utility>   // for std::move
+#include <utility>   // for std::move, std::swap
 #include <vector>    // for std::vector
 #include <cstddef>   // for std::size_t
+
+// ==========================================
+// General declarations
+// ==========================================
 
 #define QFILTER_TEST(test_name) TEST(quotient_filter_fp, test_name)
 
@@ -22,6 +26,10 @@ using qfilter = quofil::quotient_filter_fp;
 using value_t = qfilter::value_type;
 using std::size_t;
 using set_t = std::set<value_t>;
+
+// ==========================================
+// Utilities for tests.
+// ==========================================
 
 template <class Function>
 static void repeat(size_t n, Function f) {
@@ -33,6 +41,13 @@ template <class Range1, class Range2>
 static bool equal(const Range1 &lhs, const Range2 &rhs) {
   return std::equal(std::begin(lhs), std::end(lhs), std::begin(rhs),
                     std::end(rhs));
+}
+
+// Checks whether lhs and rhs are clones.
+static bool totally_equal(const qfilter &lhs, const qfilter &rhs) noexcept {
+  return lhs.size() == rhs.size() && lhs.capacity() == rhs.capacity() &&
+         lhs.quotient_bits() == rhs.quotient_bits() &&
+         lhs.remainder_bits() == rhs.remainder_bits() && equal(lhs, rhs);
 }
 
 static auto make_fp_generator(const qfilter &filter) {
@@ -51,7 +66,7 @@ static auto make_insertion_decision_generator(const qfilter &filter) {
   std::bernoulli_distribution dist;
   std::default_random_engine gen;
 
-  return [ gen = std::move(gen), dist, &filter ]() mutable {
+  return [&filter, gen = std::move(gen), dist ]() mutable {
     if (filter.empty())
       return true;
     if (filter.full())
@@ -61,7 +76,8 @@ static auto make_insertion_decision_generator(const qfilter &filter) {
   };
 }
 
-// A filter with a small r_bits is difficult to fill.
+// Populates a filter with random values.
+// Note: A filter with a small r_bits is difficult to fill.
 static void populate(qfilter &filter, size_t insertion_tries = -1) {
   auto gen_fp = make_fp_generator(filter);
   while (!filter.full() && insertion_tries) {
@@ -70,34 +86,14 @@ static void populate(qfilter &filter, size_t insertion_tries = -1) {
   }
 }
 
-QFILTER_TEST(Can_mix_insertion_and_queries) {
-  qfilter filter(13, 5); // q_bits and r_bits
-  std::set<value_t> set;
+// ==========================================
+// QFILTER_TEST Section
+// ==========================================
 
-  auto gen_fp = make_fp_generator(filter);
-
-  repeat(filter.capacity() / 2, [&] {
-    const auto fp = gen_fp();
-    const auto pfilter = filter.insert(fp);
-    const auto pset = set.insert(fp);
-    EXPECT_EQ(pfilter.second, pset.second);
-    EXPECT_EQ(*pfilter.first, fp);
-  });
-
-  EXPECT_EQ(filter.size(), set.size());
-
-  for (value_t value : set)
-    EXPECT_TRUE(filter.count(value));
-
-  repeat(10000, [&] {
-    const auto fp = gen_fp();
-    EXPECT_EQ(set.count(fp), filter.count(fp));
-  });
-}
-
-QFILTER_TEST(Can_mix_insertion_deletion_and_queries) {
-  qfilter filter(13, 2); // q_bits and r_bits
-  std::set<value_t> set;
+QFILTER_TEST(Can_mix_insertions_deletions_and_queries) {
+  // small r is required so random fingerprints have high probability to exist.
+  qfilter filter(13, 1);
+  set_t set;
 
   auto gen_fp = make_fp_generator(filter);
   auto do_insertion = make_insertion_decision_generator(filter);
@@ -110,7 +106,7 @@ QFILTER_TEST(Can_mix_insertion_deletion_and_queries) {
       const auto pset = set.insert(fp);
       EXPECT_EQ(pset.second, pfilter.second);
       EXPECT_EQ(fp, *pfilter.first);
-      EXPECT_TRUE(filter.find(fp) == pfilter.first);
+      EXPECT_EQ(pfilter.first, filter.find(fp));
     } else {
       const auto ans_filter = filter.erase(fp);
       const auto ans_set = set.erase(fp);
@@ -119,19 +115,36 @@ QFILTER_TEST(Can_mix_insertion_deletion_and_queries) {
     }
     EXPECT_EQ(set.size(), filter.size());
   });
+
+  for (value_t value : set)
+    EXPECT_TRUE(filter.count(value));
+
+  repeat(10000, [&] {
+    const auto fp = gen_fp();
+    EXPECT_EQ(set.count(fp), filter.count(fp));
+  });
 }
 
-QFILTER_TEST(Works_as_expected_if_full) {
+QFILTER_TEST(Can_be_empty_and_full) {
 
   qfilter filter(10, 8); // q_bits, r_bits
+  const auto capacity = filter.capacity();
+
   populate(filter);
   set_t set(filter.begin(), filter.end());
 
-  ASSERT_TRUE(filter.full());
-  EXPECT_THROW(filter.insert(*set.begin()), quofil::filter_is_full);
+  EXPECT_TRUE(filter.full());
+  EXPECT_EQ(capacity, filter.capacity());
+  EXPECT_EQ(capacity, filter.size());
 
-  for (const value_t fp : set)
-    ASSERT_TRUE(filter.erase(fp));
+  EXPECT_THROW(filter.insert(*set.begin()), quofil::filter_is_full);
+  EXPECT_TRUE(filter.full());
+
+  for (const value_t fp : set) {
+    EXPECT_FALSE(filter.empty());
+    EXPECT_TRUE(filter.erase(fp));
+    EXPECT_FALSE(filter.full());
+  }
 
   EXPECT_TRUE(filter.empty());
 }
@@ -149,8 +162,7 @@ QFILTER_TEST(Can_be_cleared) {
   EXPECT_EQ(prev_cap, filter.capacity());
   EXPECT_EQ(prev_q, filter.quotient_bits());
   EXPECT_EQ(prev_r, filter.remainder_bits());
-
-  EXPECT_TRUE(filter.begin() == filter.end());
+  EXPECT_EQ(filter.begin(), filter.end());
 
   filter.insert(5);
   auto first = filter.begin();
@@ -160,7 +172,7 @@ QFILTER_TEST(Can_be_cleared) {
   EXPECT_TRUE(filter.empty());
 
   auto gen_fp = make_fp_generator(filter);
-  std::set<value_t> set;
+  set_t set;
   while (!filter.full()) {
     const auto fp = gen_fp();
     if (set.insert(fp).second)
@@ -180,33 +192,19 @@ QFILTER_TEST(Can_be_default_constructed) {
   EXPECT_TRUE(filter.full());
   EXPECT_EQ(0, filter.quotient_bits());
   EXPECT_EQ(0, filter.quotient_bits());
-  EXPECT_TRUE(filter.begin() == filter.end());
+  EXPECT_EQ(filter.begin(), filter.end());
 }
 
-QFILTER_TEST(Can_be_moved) {
-  const size_t q_bits = 5;
-  const size_t r_bits = 3;
-
+QFILTER_TEST(Can_be_constructed_with_required_q_and_r) {
+  const size_t q_bits = 4;
+  const size_t r_bits = 7;
   qfilter filter(q_bits, r_bits);
-  populate(filter, filter.capacity() / 2);
-  set_t set(filter.begin(), filter.end());
 
-  const qfilter new_filter = std::move(filter);
-
-  // The new filter is OK.
-  EXPECT_EQ(set.size(), new_filter.size());
-  EXPECT_EQ(size_t{1} << q_bits, new_filter.capacity());
-  EXPECT_EQ(q_bits, new_filter.quotient_bits());
-  EXPECT_EQ(r_bits, new_filter.remainder_bits());
-  EXPECT_TRUE(equal(set, new_filter));
-
-  // The old filter has invalid state but can be reassigned.
-  filter = qfilter();
+  EXPECT_EQ(q_bits, filter.quotient_bits());
+  EXPECT_EQ(r_bits, filter.remainder_bits());
   EXPECT_EQ(0, filter.size());
-  EXPECT_EQ(0, filter.capacity());
-  EXPECT_EQ(0, filter.quotient_bits());
-  EXPECT_EQ(0, filter.remainder_bits());
-  EXPECT_TRUE(filter.begin() == filter.end());
+  EXPECT_EQ(1UL << q_bits, filter.capacity());
+  EXPECT_EQ(filter.begin(), filter.end());
 }
 
 QFILTER_TEST(Can_be_copied) {
@@ -216,19 +214,33 @@ QFILTER_TEST(Can_be_copied) {
 
   qfilter new_filter = filter;
 
-  EXPECT_EQ(filter.size(), new_filter.size());
-  EXPECT_EQ(filter.capacity(), new_filter.capacity());
-  EXPECT_EQ(filter.quotient_bits(), new_filter.quotient_bits());
-  EXPECT_EQ(filter.remainder_bits(), new_filter.remainder_bits());
-
-  EXPECT_TRUE(equal(filter, new_filter));
-  EXPECT_TRUE(equal(set, new_filter));
+  ASSERT_TRUE(equal(set, new_filter));
+  EXPECT_TRUE(totally_equal(filter, new_filter));
 }
+
+QFILTER_TEST(Can_be_moved) {
+  qfilter filter(5, 3);
+  populate(filter, filter.capacity() / 2);
+
+  const qfilter backup_filter = filter;
+  const qfilter new_filter = std::move(filter);
+
+  // The new filter is OK.
+  EXPECT_TRUE(totally_equal(backup_filter, new_filter));
+
+  // The old filter has invalid state but can be reassigned.
+  filter = qfilter();
+  EXPECT_TRUE(totally_equal(filter, qfilter()));
+}
+
+// ==========================================
+// QF_ITERATOR_TEST Section
+// ==========================================
 
 QF_ITERATOR_TEST(Can_iterate) {
   qfilter filter(11, 6); // q_bits, r_bits
   populate(filter, filter.capacity());
-  std::set<value_t> set(filter.begin(), filter.end());
+  set_t set(filter.begin(), filter.end());
 
   ASSERT_EQ(*filter.begin(), *set.begin());
   ASSERT_TRUE(equal(filter, set));

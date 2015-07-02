@@ -54,7 +54,7 @@ public:
   /// \param fp The fingerprint to be searched.
   /// \returns Iterator to the slot that contains the fingerprint. If no such
   /// fingerprint was found, it returns <tt>end()</tt>.
-  iterator find(value_type fp) const noexcept;
+  const_iterator find(value_type fp) const noexcept;
 
   /// \brief Counts how many times a fingerprint is contained into the filter.
   ///
@@ -79,7 +79,7 @@ public:
   ///
   /// Invalidates all iterators.
   ///
-  void erase(iterator pos) noexcept;
+  void erase(const_iterator pos) noexcept;
 
   /// \brief Erases the given fingerprint if it exists.
   ///
@@ -100,7 +100,7 @@ public:
   bool empty() const noexcept { return num_elements == 0; }
 
   /// \brief Checks whether the quotient filter is full i.e
-  /// <tt>size() == slots()</tt>
+  /// <tt>size() == capacity()</tt>
   bool full() const noexcept { return size() == capacity(); }
 
   /// \brief Returns the maximum number of elements which the quotient filter
@@ -145,8 +145,8 @@ private:
   size_type r_bits = 0;
   size_type num_slots = 0;
   size_type num_elements = 0;
-  value_type q_mask = 0;
-  value_type r_mask = 0;
+  value_type quotient_mask = 0;
+  value_type remainder_mask = 0;
   std::vector<bool> is_occupied;
   std::vector<bool> is_continuation;
   std::vector<bool> is_shifted;
@@ -207,23 +207,22 @@ private:
   size_type canonical_pos = 0; // Where the remainder should be.
 };
 
-inline quotient_filter_fp::iterator quotient_filter_fp::begin() const noexcept {
+inline auto quotient_filter_fp::begin() const noexcept -> iterator {
   return iterator(this);
 }
-inline quotient_filter_fp::iterator quotient_filter_fp::end() const noexcept {
+inline auto quotient_filter_fp::end() const noexcept -> iterator {
   return iterator();
 }
-inline quotient_filter_fp::size_type
-quotient_filter_fp::count(value_type fp) const noexcept {
+inline auto quotient_filter_fp::count(value_type fp) const
+    noexcept -> size_type {
   return find(fp) != end();
 }
-inline void quotient_filter_fp::erase(iterator slot_iterator) noexcept {
-  assert(slot_iterator.filter == this);
-  remove_entry(slot_iterator.pos, slot_iterator.canonical_pos);
+inline void quotient_filter_fp::erase(const const_iterator it) noexcept {
+  assert(it.filter == this);
+  remove_entry(it.pos, it.canonical_pos);
   --num_elements;
 }
-inline quotient_filter_fp::size_type
-quotient_filter_fp::erase(value_type fp) noexcept {
+inline auto quotient_filter_fp::erase(value_type fp) noexcept -> size_type {
   const auto it = find(fp);
   if (it == end())
     return 0;
