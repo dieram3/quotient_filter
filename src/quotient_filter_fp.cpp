@@ -1,4 +1,4 @@
-//          Copyright Diego Ramírez July 2015
+//          Copyright Diego Ramírez June 2015
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -207,6 +207,11 @@ size_type qfilter::find_run_start(const size_type canonical_pos) const
 }
 
 qf_iterator qfilter::find(const value_type fp) const noexcept {
+
+  // It is necessary. Note that if *this was default constructed. All flags
+  // vectors are empty.
+  if (empty())
+    return end();
 
   const auto fp_quotient = extract_quotient(fp);
   const auto fp_remainder = extract_remainder(fp);
