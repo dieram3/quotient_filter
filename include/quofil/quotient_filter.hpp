@@ -41,8 +41,10 @@ public:
 public:
   // Constructors
 
-  explicit quotient_filter(size_type min_cap = 0, const Hash &hash = Hash())
-      : filter(), hash_fn(hash), max_load_factor_{0.8f} {
+  quotient_filter() noexcept {}
+
+  explicit quotient_filter(size_type min_cap, const Hash &hash = Hash())
+      : hash_fn(hash) {
     reserve(min_cap);
   }
 
@@ -118,7 +120,7 @@ public:
 
   // Hash policy
   float load_factor() const noexcept {
-    return float(size()) / float(slot_count());
+    return empty() ? 1.0f : float(size()) / float(slot_count());
   }
 
   float max_load_factor() const noexcept { return max_load_factor_; }
@@ -158,9 +160,9 @@ private:
   static_assert(fp_bits != 0, "The fingerprint must have at least one bit");
 
 private:
-  quotient_filter_fp filter;
-  Hash hash_fn;
-  float max_load_factor_;
+  quotient_filter_fp filter{};
+  Hash hash_fn{};
+  float max_load_factor_{0.8f};
 };
 
 template <typename Key, typename Hash, std::size_t Bits>

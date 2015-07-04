@@ -10,11 +10,4 @@ target_compile_features(quotient_filter PUBLIC
 	cxx_return_type_deduction
 	)
 
-# Set warnings on AppleClang and Clang COMPILER IDS
-target_compile_options(quotient_filter PRIVATE 
-  $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:
-  -Weverything 
-  -Wno-c++98-compat
-  -Wno-c++98-compat-pedantic
-  -Wno-padded
-  >)
+configure_qf_target(quotient_filter)

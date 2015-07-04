@@ -39,9 +39,8 @@ public:
   /// \brief Constructs a quotient filter using the given bits requirements.
   ///
   /// The constructed filter will use approximately <tt>(r + 3) * pow(2, q)</tt>
-  /// bits of memory. Note that all used fingerprints will be truncated to its
-  /// <tt>r + q</tt> least significant bits. If the truncation does not affect
-  /// to any fingerprint the quotient filter will not give false positives.
+  /// bits of memory. Afterward, all inserted, searched and queried keys must
+  /// be less than <tt>1 << r + q</tt>, otherwise the behavior is undefined.
   ///
   /// \param q The number of bits for the quotient.
   /// \param r The number of bits for the remainder.
@@ -51,6 +50,7 @@ public:
   quotient_filter_fp(size_type q, size_type r);
 
   /// \brief Searchs for a given fingerprint.
+  ///
   /// \param fp The fingerprint to be searched.
   /// \returns Iterator to the slot that contains the fingerprint. If no such
   /// fingerprint was found, it returns <tt>end()</tt>.
@@ -117,7 +117,6 @@ public:
   const_iterator begin() const noexcept;
 
   /// \brief Returns an iterator to the end of the filter.
-  /// \note The end iterator is never invalidated.
   const_iterator end() const noexcept;
 
 private:
@@ -166,8 +165,6 @@ public:
   using iterator_category = std::forward_iterator_tag;
 
 public:
-  iterator() = default;
-
   void operator++() { increment(); }
 
   iterator operator++(int) {
@@ -187,13 +184,17 @@ public:
   }
 
 private:
-  explicit iterator(const quotient_filter_fp *) noexcept;
-  iterator(const quotient_filter_fp *, size_type, size_type) noexcept;
+  iterator(const quotient_filter_fp *filter_, size_type pos_,
+           size_type can_pos_) noexcept : filter{filter_},
+                                          pos{pos_},
+                                          canonical_pos{can_pos_} {}
 
   void increment() noexcept;
 
   bool equal(const iterator &that) const noexcept {
-    return pos == that.pos && filter == that.filter;
+    assert(filter == that.filter &&
+           "Cannot comparing iterators from different filters.");
+    return pos == that.pos;
   }
 
   reference dereference() const noexcept {
@@ -207,12 +208,10 @@ private:
   size_type canonical_pos = 0; // Where the remainder should be.
 };
 
-inline auto quotient_filter_fp::begin() const noexcept -> iterator {
-  return iterator(this);
-}
 inline auto quotient_filter_fp::end() const noexcept -> iterator {
-  return iterator();
+  return iterator(this, num_slots, num_slots);
 }
+
 inline auto quotient_filter_fp::count(value_type fp) const
     noexcept -> size_type {
   return find(fp) != end();

@@ -137,7 +137,9 @@ size_type qfilter::decr_pos(const size_type pos) const noexcept {
 // ==========================================
 
 value_type qfilter::extract_quotient(value_type fp) const noexcept {
-  return (fp >> r_bits) & quotient_mask;
+  assert(fp >> r_bits == (fp >> r_bits & quotient_mask) &&
+         "The fingerprint is too big for this quotient-filter.");
+  return fp >> r_bits;
 }
 
 value_type qfilter::extract_remainder(value_type fp) const noexcept {
@@ -366,27 +368,20 @@ void qfilter::remove_entry(const size_type remove_pos,
 // Iterator
 // ==========================================
 
-qf_iterator::iterator(const qfilter *const the_filter) noexcept {
-  assert(the_filter != nullptr);
+auto qfilter::begin() const noexcept -> iterator {
 
-  if (the_filter->empty())
-    return;
+  if (empty())
+    return end();
 
-  filter = the_filter;
-  canonical_pos = filter->is_occupied[0] ? 0 : filter->find_next_occupied(0);
-  pos = filter->find_run_start(canonical_pos);
-}
+  const size_t canonical_pos = is_occupied[0] ? 0 : find_next_occupied(0);
+  const size_t pos = find_run_start(canonical_pos);
 
-qf_iterator::iterator(const qfilter *const filter_, const size_type pos_,
-                      const size_type canonical_pos_) noexcept
-    : filter{filter_},
-      pos{pos_},
-      canonical_pos{canonical_pos_} {
-  assert(filter_ != nullptr);
+  return iterator(this, pos, canonical_pos);
 }
 
 void qf_iterator::increment() noexcept {
-  assert(filter && "Can't increment end iterator");
+  assert(pos <= filter->num_slots && "The iterator has invalid position");
+  assert(pos != filter->num_slots && "Can't increment end iterator");
 
   pos = filter->incr_pos(pos);
 
@@ -397,8 +392,7 @@ void qf_iterator::increment() noexcept {
 
   // If end was reached.
   if (canonical_pos == filter->num_slots) {
-    filter = nullptr;
-    pos = 0;
+    pos = canonical_pos;
     return;
   }
 

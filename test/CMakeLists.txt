@@ -1,25 +1,10 @@
 function(add_unittest TEST_NAME)
   set(TARGET_ID "${TEST_NAME}_test")
-  
-  add_executable(${TARGET_ID} ${ARGN})
-  target_link_libraries(${TARGET_ID} quotient_filter gtest_main gtest)
-  set_property(TARGET ${TARGET_ID} PROPERTY CXX_EXTENSIONS OFF)
-
-  # Set warnings on AppleClang and Clang COMPILER IDS
-  target_compile_options(${TARGET_ID} PRIVATE 
-  $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:
-  -Weverything 
-  -Wno-c++98-compat 
-  -Wno-c++98-compat-pedantic
-  -Wno-padded
-  -Wno-sign-conversion 
-  -Wno-global-constructors
-  >)
-
+  add_qf_executable(${TARGET_ID} ${ARGN})
+  target_link_libraries(${TARGET_ID} gtest_main gtest)
+  target_disable_global_constructor_warning(${TARGET_ID}) 
   add_test(NAME ${TEST_NAME} COMMAND ${TARGET_ID})
 endfunction()
 
-add_unittest("quofil"
-  "quotient_filter_fp_test.cpp"
-  "quotient_filter_test.cpp"
-  )
+add_unittest("quotient_filter_fp" "quotient_filter_fp_test.cpp")
+add_unittest("quotient_filter" "quotient_filter_test.cpp")
