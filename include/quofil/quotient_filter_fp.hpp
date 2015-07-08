@@ -165,7 +165,10 @@ public:
   using iterator_category = std::forward_iterator_tag;
 
 public:
-  void operator++() { increment(); }
+  iterator &operator++() {
+    increment();
+    return *this;
+  }
 
   iterator operator++(int) {
     auto old_iter = *this;

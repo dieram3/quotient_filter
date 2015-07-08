@@ -1,4 +1,4 @@
-//          Copyright Diego Ramírez June 2015
+//          Copyright Diego Ramírez June, July 2015
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -6,24 +6,14 @@
 #include <quofil/quotient_filter.hpp>
 #include <gtest/gtest.h>
 
-#include <algorithm>     //
-#include <functional>    // for std::ref
-#include <ios>           //
-#include <iterator>      //
-#include <limits>        //
-#include <numeric>       // for std::iota
-#include <ostream>       // for std::ostream
-#include <random>        //
-#include <set>           // for std::set
-#include <sstream>       //
-#include <string>        // for std::string
-#include <type_traits>   //
-#include <unordered_set> // for std::unordered_set
-#include <utility>       // for std::{forward, move}
-#include <vector>        //
-#include <cassert>       // for assert
-#include <cmath>         //
-#include <cstddef>       //
+#include <iterator>    //
+#include <limits>      //
+#include <ostream>     // for std::ostream
+#include <string>      // for std::string
+#include <type_traits> // for concepts check section
+#include <utility>     // for std::move
+#include <cassert>     // for assert
+#include <cstddef>     //
 // See below the use of uncommented headers.
 
 // ==========================================
@@ -41,53 +31,16 @@
 
 // From <quofil/quotient_filter.hpp>
 using quofil::quotient_filter;
-
-// From <gtest/gtest.h>
-using testing::AssertionResult;
-using testing::AssertionSuccess;
-using testing::AssertionFailure;
-
-// From <algorithm>
-using std::for_each;
-using std::max;
-using std::min;
-using std::sort;
-// Also use: equal, generate, shuffle
-
-// From <ios>
-using std::boolalpha;
-
-// From <iterator>
-using std::back_inserter;
-using std::begin;
-using std::end;
-// Also use advance, next
-
-// From <numeric_limits>
-using std::numeric_limits;
-
-// From <random>
-using std::mt19937;
-using std::seed_seq;
-using std::uniform_int_distribution;
-
-// From <sstream>
-using std::ostringstream;
-
-// From <type_traits>
-using std::is_integral;
-// Also use other metaprogramming functions in the concept check section.
-
-// From <unordered_set>
-using std::unordered_set;
-
-// From <vector>
-using std::vector;
 using std::initializer_list;
 
-// From <cmath>
-using std::ceil;
-using std::fabs;
+// From <iterator>
+using std::begin;
+using std::end;
+using std::distance;
+// Also use std::next
+
+// From <limits>
+using std::numeric_limits;
 
 // From <cstddef>
 using std::ptrdiff_t;
@@ -97,194 +50,40 @@ using std::size_t;
 // Constants.
 // ==========================================
 
-static constexpr float default_max_load_factor = 0.8f;
+static constexpr float default_max_load_factor = 0.75f;
 
 // ==========================================
 // Basic Utility functions.
 // ==========================================
 
-template <typename NullaryFunction>
-static void repeat(size_t n, NullaryFunction f) {
-  while (n--)
-    f();
+template <class T>
+static const T &as_const(T &elem) {
+  return elem;
 }
-
-template <typename T = int>
-static vector<T> make_iota_vector(size_t num_elems) {
-  vector<T> vec(num_elems);
-  std::iota(vec.begin(), vec.end(), T{0});
-  assert(vec.size() == num_elems);
-  return vec;
-}
-
-template <typename T>
-static constexpr bool float_equal(const T lhs, const T rhs) noexcept {
-  STATIC_ASSERT(std::is_floating_point<T>::value);
-  return fabs(lhs - rhs) < numeric_limits<T>::epsilon();
-}
-
-template <typename Range>
-static void shuffle(Range &range) {
-  seed_seq seq = {91, 1090, 1230123, 1981231, 9819};
-  std::shuffle(std::begin(range), std::end(range), mt19937(seq));
-}
-
-template <typename Range, typename UnaryFunction>
-static void for_each(const Range &range, UnaryFunction f) {
-  std::for_each(std::begin(range), std::end(range), f);
-}
-
-// ==========================================
-// Integer generator
-// ==========================================
-
-template <typename T>
-class int_generator {
-  mt19937 gen;
-  uniform_int_distribution<T> dist{numeric_limits<T>::min(),
-                                   numeric_limits<T>::max()};
-  STATIC_ASSERT(is_integral<T>::value);
-
-public:
-  int_generator(const std::mt19937::result_type seed) : gen(seed) {}
-
-  template <typename Sseq>
-  int_generator(Sseq &s)
-      : gen(s) {}
-
-  void set_params(const T a, const T b) {
-    using param_t = typename decltype(dist)::param_type;
-    dist.param(param_t(a, b));
-  }
-
-  T operator()() { return dist(gen); }
-};
-
-// ==========================================
-// Debug view for ranges.
-// ==========================================
-
-namespace {
-template <typename Range>
-class basic_debug_view {
-public:
-  basic_debug_view(const Range &range) : prange{&range} {}
-
-  auto begin() const { return prange->begin(); }
-  auto end() const { return prange->end(); }
-  auto empty() const { return prange->empty(); }
-  auto size() const { return prange->size(); }
-
-private:
-  const Range *prange;
-};
-
-template <typename R1, typename R2>
-static bool operator==(const basic_debug_view<R1> &lhs,
-                       const basic_debug_view<R2> &rhs) {
-  // Intentional redundancy added.
-  return lhs.size() == rhs.size() &&
-         std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
-}
-
-template <typename R1, typename R2>
-static bool operator!=(const basic_debug_view<R1> &lhs,
-                       const basic_debug_view<R2> &rhs) {
-  return !(lhs == rhs);
-}
-
-template <typename Range>
-static std::ostream &operator<<(std::ostream &os,
-                                basic_debug_view<Range> view) {
-  if (view.empty()) {
-    return os << "[ empty ]";
-  }
-  if (view.size() <= 10) {
-    os << '[';
-    for (const auto &elem : view)
-      os << ' ' << elem;
-    return os << " ]";
-  }
-  auto it = view.begin();
-  os << '[';
-  repeat(5, [&] { os << ' ' << *it++; });
-  os << " ... ";
-  std::advance(it, ptrdiff_t(view.size()) - 10);
-  repeat(5, [&] { os << *it++ << ' '; });
-  assert(it == view.end());
-  return os << ']';
-}
-
-template <typename Range>
-static auto debug_view(const Range &range) {
-  return basic_debug_view<Range>(range);
-}
-
-} // End anonymous namespace
 
 // ==========================================
 // Hash function used for testing.
 // ==========================================
 
 namespace {
-class state_hash {
-public:
-  state_hash(int state_val = 0) : state{state_val} {}
+class test_hash {
+  int state;
 
-  // 1:1 relation, always gen fp_bits
+public:
+  explicit test_hash(int state_value = 0) : state{state_value} {}
+
+  // 1:1 relation
   size_t operator()(const int key) const noexcept {
     // It is necessary static cast to unsigned int and not to size_t so the
-    // hash gives a fingerprint fp in [0, numeric_limits<unsigned>::max()]
+    // hash gives a value in [0, numeric_limits<unsigned>::max()]
     return static_cast<unsigned>(key);
   }
-  friend bool operator==(const state_hash &lhs,
-                         const state_hash &rhs) noexcept {
+  friend bool operator==(const test_hash &lhs, const test_hash &rhs) noexcept {
     return lhs.state == rhs.state;
   }
-  friend std::ostream &operator<<(std::ostream &os, const state_hash &hash_fn) {
+  friend std::ostream &operator<<(std::ostream &os, const test_hash &hash_fn) {
     return os << hash_fn.state;
   }
-
-private:
-  int state;
-};
-
-static int hash_to_key(const std::size_t hash) {
-  return static_cast<int>(static_cast<unsigned>(hash));
-}
-
-} // End anonymous namespace
-
-// ==========================================
-// Quotient-Filter like class.
-// ==========================================
-
-namespace {
-
-template <typename SetT>
-class basic_hash_set {
-  SetT set;
-  state_hash hash_fn{};
-
-public:
-  basic_hash_set() {}
-
-  template <typename InputIt>
-  basic_hash_set(InputIt first, InputIt last) {
-    insert(first, last);
-  }
-
-  auto insert(int elem) { return set.insert(hash_fn(elem)); }
-
-  template <typename InputIt>
-  void insert(InputIt first, InputIt last) {
-    for_each(first, last, [this](int elem) { insert(elem); });
-  }
-
-  auto begin() const { return set.begin(); }
-  auto end() const { return set.end(); }
-  auto empty() const { return set.empty(); }
-  auto size() const { return set.size(); }
 };
 
 } // End anonymous namespace
@@ -293,10 +92,8 @@ public:
 // Type aliases
 // ==========================================
 
-using ordered_hash_set = basic_hash_set<std::set<size_t>>;
-using unordered_hash_set = basic_hash_set<unordered_set<size_t>>;
 using filter_t =
-    quotient_filter<int, state_hash, numeric_limits<unsigned>::digits>;
+    quotient_filter<int, test_hash, numeric_limits<unsigned>::digits>;
 
 // ==========================================
 // Concepts check
@@ -307,7 +104,7 @@ STATIC_ASSERT(std::is_class<filter_t>::value);
 // Properties
 STATIC_ASSERT(!std::is_polymorphic<filter_t>::value);
 // Basic constructors
-STATIC_ASSERT(std::is_nothrow_default_constructible<filter_t>::value);
+STATIC_ASSERT(std::is_default_constructible<filter_t>::value);
 STATIC_ASSERT(std::is_copy_constructible<filter_t>::value);
 STATIC_ASSERT(std::is_nothrow_move_constructible<filter_t>::value);
 // Assignment
@@ -323,595 +120,493 @@ STATIC_ASSERT((!std::is_convertible<filter_t::size_type, filter_t>::value));
 // Quotient-Filter extended query functions
 // ==========================================
 
-// Redundant empty check.
+static void expect_properties(const filter_t &c, const size_t min_slot_count,
+                              const test_hash hash_fn, const float ml) {
+  EXPECT_LE(min_slot_count, c.slot_count());
+  EXPECT_EQ(hash_fn, c.hash_function());
+  EXPECT_EQ(ml, c.max_load_factor());
+}
+
+// Checks whether a filter has the given contents and checks invariants.
 template <typename T, typename H, size_t B>
-static bool is_empty(const quotient_filter<T, H, B> &filter) {
-  return filter.empty() && filter.size() == 0 && filter.begin() == filter.end();
-}
+static void expect_contents(const quotient_filter<T, H, B> &c,
+                            const initializer_list<size_t> hash_list) {
+  EXPECT_EQ(hash_list.size(), c.size());
+  EXPECT_EQ(!hash_list.size(), c.empty());
+  EXPECT_EQ(ptrdiff_t(hash_list.size()), distance(c.begin(), c.end()));
+  EXPECT_FLOAT_EQ(c.slot_count() ? float(c.size()) / c.slot_count() : 0,
+                  c.load_factor());
+  EXPECT_LE(c.load_factor(), c.max_load_factor());
 
-static size_t
-calc_expected_slot_count(const size_t num_elems,
-                         const float ml = default_max_load_factor) {
-  const size_t min_valid_cap = static_cast<size_t>(ceil(num_elems / ml));
-  size_t min_num_slots = 1;
-  while (min_num_slots < min_valid_cap)
-    min_num_slots *= 2;
-  return min_num_slots;
-}
-
-static size_t calc_expected_capacity(const size_t num_elems,
-                                     const float ml = default_max_load_factor) {
-  return static_cast<size_t>(calc_expected_slot_count(num_elems, ml) * ml);
-}
-
-// Returns true the given filter has the minimum reserve able to hold num_elem
-// elements given the current requirements.
-template <typename T, typename H, size_t B>
-static bool has_precise_reserve_for(const quotient_filter<T, H, B> &filter,
-                                    const size_t num_elems) {
-
-  if (num_elems == 0) {
-    return filter.capacity() == 0 && filter.slot_count() == 0;
+  auto it = c.begin();
+  for (const size_t hash : hash_list) {
+    ASSERT_TRUE(it != c.end());
+    EXPECT_EQ(hash, *it++);
   }
-
-  const float ml = filter.max_load_factor();
-
-  return filter.capacity() == calc_expected_capacity(num_elems, ml) &&
-         filter.slot_count() == calc_expected_slot_count(num_elems, ml);
+  EXPECT_TRUE(it == c.end());
 }
-
-template <typename T, typename H, size_t B>
-static bool use_minimum_storage(const quotient_filter<T, H, B> &filter) {
-  return has_precise_reserve_for(filter, filter.size());
-}
-
-// Asserts that f1 has same state than f2 (including the elements).
-static AssertionResult assert_all_equal(const char *expr1, const char *expr2,
-                                        const filter_t &f1,
-                                        const filter_t &f2) {
-  ostringstream oss;
-  oss << boolalpha;
-
-  auto report =
-      [&oss, expr1, expr2](const char *param, auto value1, auto value2) {
-        oss << param << ":\n";
-        oss << " Expected: " << value1 << '\n';
-        oss << " Actual:   " << value2 << '\n';
-      };
-
-  auto check_for = [report](const char *member_name, auto value1, auto value2,
-                            auto equal_to) {
-    if (!equal_to(value1, value2))
-      report(member_name, value1, value2);
-  };
-
-  auto eq = std::equal_to<>();
-  check_for("Contained elements", debug_view(f1), debug_view(f2), eq);
-  check_for("Result of .empty()", f1.empty(), f2.empty(), eq);
-  check_for("size", f1.size(), f2.size(), eq);
-  check_for("slot_count", f1.slot_count(), f2.slot_count(), eq);
-  check_for("hash_function", f1.hash_function(), f2.hash_function(), eq);
-  check_for("capacity", f1.capacity(), f2.capacity(), eq);
-
-  auto feq = [](float x, float y) { return float_equal(x, y); };
-  check_for("max_load_factor", f1.max_load_factor(), f2.max_load_factor(), feq);
-  check_for("load_factor", f1.load_factor(), f2.load_factor(), feq);
-
-  const std::string the_report = oss.str();
-  if (the_report.empty())
-    return AssertionSuccess();
-
-  AssertionResult result(false);
-  result << "The given filters are not exactly equal.\n";
-  result << "The expected filter:   " << expr1 << '\n';
-  result << "And the actual filter: " << expr2 << '\n';
-  result << "Differ on:\n\n";
-  result << the_report;
-  return result;
-}
-
-// ==========================================
-// Test data generation
-// ==========================================
-
-// Creates a quotient_filter of the given size with uniformly distrubuted data
-// between numeric_limits<T>::min() and numeric_limits<T>::max()
-// This algorithm is deterministic when compiled under the same environment.
-static filter_t make_test_filter(const size_t size) {
-  seed_seq seq = {size, size * 11, size / 11, size % 11};
-  int_generator<int> gen_elem(seq);
-  filter_t filter(size);
-  while (filter.size() != size)
-    filter.insert(gen_elem());
-  return filter;
-}
-
-// ==========================================
-// FilterTest class
-// ==========================================
-
-namespace {
-
-class FilterTest : public ::testing::Test {
-protected:
-  void SetUp() override;
-
-protected:
-  vector<vector<int>> test_vectors;
-  vector<size_t> test_capacities;
-  vector<state_hash> test_hash_functions;
-
-private:
-  static vector<int> generate_vector(const size_t size, mt19937 &engine);
-  static vector<vector<int>> make_test_vectors(initializer_list<size_t>);
-};
-
-void FilterTest::SetUp() {
-  test_vectors = make_test_vectors({0, 1, 10, 50, 130, 350});
-  test_capacities = {0, 1, 2, 30, 50, 140};
-  test_hash_functions = {0, 2, 5, -1};
-}
-
-// Generates a vector uniformly distributed in the range of 'int' using the
-// given random number engine. The size will be size + size / 10. At least
-// size/10 elements will be repeated.
-vector<int> FilterTest::generate_vector(const size_t size, mt19937 &engine) {
-  uniform_int_distribution<int> dist(numeric_limits<int>::min(),
-                                     numeric_limits<int>::max());
-  vector<int> vec(size + size / 10);
-  generate(begin(vec), end(vec), [&] { return dist(engine); });
-  copy(end(vec) - size / 10, end(vec), begin(vec));
-  shuffle(begin(vec), end(vec), engine);
-  return vec;
-}
-
-// Generates a sequence of vectors according the given sizes.
-// Each generated vector will be uniformly distributed in the range of 'int'.
-vector<vector<int>>
-FilterTest::make_test_vectors(const initializer_list<size_t> sizes) {
-
-  // Use the given sizes for getting randomness.
-  seed_seq seq(sizes);
-  mt19937 engine(seq);
-
-  vector<vector<int>> vectors;
-  vectors.reserve(sizes.size());
-  for (const size_t size : sizes)
-    vectors.push_back(generate_vector(size, engine));
-
-  return vectors;
-}
-
-} // End anonymous namespace
 
 // ==========================================
 // Tests section
 // ==========================================
 
-TEST_F(FilterTest, DefaultConstructor) {
-  EXPECT_PRED_FORMAT2(assert_all_equal, filter_t(0), filter_t());
+TEST(FilterTest, DefaultConstructor) {
+  const filter_t c;
+  expect_properties(c, 0, test_hash{}, default_max_load_factor);
+  expect_contents(c, {});
 }
 
-TEST_F(FilterTest, CopyConstructor) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    const filter_t orig(begin(data), end(data));
-    EXPECT_PRED_FORMAT2(assert_all_equal, orig, filter_t(orig));
-  });
+TEST(FilterTest, SlotsConstructor) {
+  const filter_t c(16);
+  expect_properties(c, 16, test_hash{}, default_max_load_factor);
+  expect_contents(c, {});
 }
 
-TEST_F(FilterTest, CopyAssignment) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    const filter_t orig(begin(data), end(data));
-    filter_t new_filter;
-    EXPECT_PRED_FORMAT2(assert_all_equal, orig, new_filter = orig);
-  });
+TEST(FilterTest, SlotsHashConstructor) {
+  const filter_t c(25, test_hash{3});
+  expect_properties(c, 32, test_hash{3}, default_max_load_factor);
+  expect_contents(c, {});
 }
 
-TEST_F(FilterTest, MoveConstructor) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t orig(begin(data), end(data));
-    const filter_t backup = orig;
-    EXPECT_PRED_FORMAT2(assert_all_equal, backup, filter_t(std::move(orig)));
-    // The moved filter can be remade
-    orig = backup;
-    EXPECT_PRED_FORMAT2(assert_all_equal, backup, orig);
-  });
+TEST(FilterTest, RangeConstructor) {
+  const int elems[] = {2, 3, 4, 5, 1, 2, 3};
+  const filter_t c(begin(elems), end(elems));
+  expect_properties(c, 8, test_hash{}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, MoveAssignment) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t orig(begin(data), end(data));
-    const filter_t backup = orig;
-    filter_t new_filter;
-    EXPECT_PRED_FORMAT2(assert_all_equal, backup, new_filter = std::move(orig));
-    // The moved filter can be remade
-    orig = backup;
-    EXPECT_PRED_FORMAT2(assert_all_equal, backup, orig);
-  });
+TEST(FilterTest, RangeSlotsConstructor) {
+  const int elems[] = {2, 3, 4, 5, 1, 2, 3};
+  const filter_t c(begin(elems), end(elems), 9);
+  expect_properties(c, 16, test_hash{}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, CapacityConstructor) {
-  for (const size_t cap : test_capacities) {
-    for (const state_hash hash_fn : test_hash_functions) {
-      const filter_t filter(cap, hash_fn);
-      EXPECT_FLOAT_EQ(default_max_load_factor, filter.max_load_factor());
-      EXPECT_TRUE(is_empty(filter));
-      EXPECT_TRUE(has_precise_reserve_for(filter, cap));
-      EXPECT_EQ(hash_fn, filter.hash_function());
-    }
-    const filter_t filter(cap);
-    EXPECT_PRED_FORMAT2(assert_all_equal, filter_t(cap, state_hash()), filter);
-  }
+TEST(FilterTest, RangeSlotsHashConstructor) {
+  const int elems[] = {2, 3, 4, 5, 1, 2, 3};
+  const filter_t c(begin(elems), end(elems), 30, test_hash{29});
+  expect_properties(c, 32, test_hash{29}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, RangeConstructor) {
-  for (const vector<int> &data : test_vectors) {
-    for (const size_t cap : test_capacities) {
-      for (const state_hash hash_fn : test_hash_functions) {
-        filter_t expected_filter(cap, hash_fn);
-        expected_filter.insert(begin(data), end(data));
-        EXPECT_PRED_FORMAT2(assert_all_equal, expected_filter,
-                            filter_t(begin(data), end(data), cap, hash_fn));
-      }
-      EXPECT_PRED_FORMAT2(assert_all_equal,
-                          filter_t(begin(data), end(data), cap, state_hash()),
-                          filter_t(begin(data), end(data), cap));
-    }
-    EXPECT_PRED_FORMAT2(assert_all_equal, filter_t(begin(data), end(data), 0),
-                        filter_t(begin(data), end(data)));
-  }
+TEST(FilterTest, InitConstructor) {
+  const filter_t c = {4, 3, 3, 4, 1, 2, 5};
+  expect_properties(c, 8, test_hash{}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, InitializerListConstructor) {
-  for (const size_t cap : test_capacities) {
-    for (const state_hash hash_fn : test_hash_functions) {
-      filter_t expected_filter(cap, hash_fn);
-      expected_filter.insert({1, 1, 2, 3, 5, 8});
-      EXPECT_PRED_FORMAT2(assert_all_equal, expected_filter,
-                          filter_t({1, 1, 2, 3, 5, 8}, cap, hash_fn));
-    }
-    EXPECT_PRED_FORMAT2(assert_all_equal,
-                        filter_t({1, 1, 2, 3, 5, 8}, cap, state_hash()),
-                        filter_t({1, 1, 2, 3, 5, 8}, cap));
-  }
-
-  EXPECT_PRED_FORMAT2(assert_all_equal, filter_t({1, 1, 2, 3, 5, 8}, 0),
-                      filter_t({1, 1, 2, 3, 5, 8}));
+TEST(FilterTest, InitSlotsConstructor) {
+  const filter_t c({4, 3, 3, 4, 1, 2, 5}, 60);
+  expect_properties(c, 64, test_hash{}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, Iterators) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    const ordered_hash_set hash_set(begin(data), end(data));
-    const filter_t filter(begin(data), end(data), hash_set.size());
-    EXPECT_TRUE(
-        std::equal(begin(hash_set), end(hash_set), begin(filter), end(filter)));
-  });
-
-  const filter_t filter;
-  EXPECT_TRUE(begin(filter) == end(filter));
+TEST(FilterTest, InitSlotsHashConstructor) {
+  const filter_t c({4, 3, 3, 4, 1, 2, 5}, 33, test_hash{39});
+  expect_properties(c, 64, test_hash{39}, default_max_load_factor);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, MaxSizeAndLimits) {
-  // fp_bits == 10, r_bits must be at least 1 so max q_bits is 9
-  quotient_filter<int, state_hash, 10> filter;
-  filter.max_load_factor(1.0f);
-  EXPECT_TRUE(is_empty(filter));
-  EXPECT_TRUE(use_minimum_storage(filter));
+TEST(FilterTest, CopyConstructor) {
+  filter_t orig({1, 2, 3, 4, 5, 5}, 25, test_hash{13});
+  orig.max_load_factor(0.5f);
 
-  STATIC_ASSERT(decltype(filter)::fp_bits == 10);
-  constexpr size_t max_size = size_t{1} << 9;
-  EXPECT_EQ(max_size, filter.max_size());
+  const filter_t c = as_const(orig);
 
-  auto vec = make_iota_vector<int>(2 * max_size);
-  assert(size_t(vec.back() + 1) == size_t{1} << 10);
-  shuffle(vec);
-  const int elem_out = vec.back();
-  vec.erase(vec.begin() + vec.size() / 2, vec.end());
-
-  for (int elem : vec) {
-    EXPECT_TRUE(filter.insert(elem).second);
-    EXPECT_TRUE(use_minimum_storage(filter));
-  }
-
-  EXPECT_NO_THROW(filter.insert(vec.back()));
-  EXPECT_THROW(filter.insert(elem_out), std::length_error);
-  sort(vec.begin(), vec.end());
-  EXPECT_EQ(debug_view(vec), debug_view(filter));
+  // Note: The slot count could be less than 32 if the copy was optimized.
+  expect_properties(c, 32, test_hash{13}, 0.5f);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, Clear) {
-  const size_t num_elems = 1000;
-  const auto backup = make_test_filter(num_elems);
-  auto filter = backup;
+TEST(FilterTest, CopyAssignment) {
+  filter_t orig({1, 2, 3, 4, 5, 5}, 25, test_hash{13});
+  orig.max_load_factor(0.5f);
 
-  ASSERT_EQ(num_elems, filter.size());
-  filter.clear();
-  EXPECT_TRUE(is_empty(filter));
-  EXPECT_TRUE(has_precise_reserve_for(filter, num_elems));
-  filter.insert(backup.begin(), backup.end());
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup, filter);
+  filter_t c({6, 7, 8}, 100, test_hash{29});
+  c = as_const(orig);
 
-  filter.clear();
-  filter.insert({1, 2, 3, 4, 5});
-  if (!use_minimum_storage(filter)) {
-    filter.reserve(0);
-    ASSERT_EQ(5, filter.size());
-    EXPECT_TRUE(use_minimum_storage(filter));
-  }
-
-  EXPECT_PRED_FORMAT2(assert_all_equal, filter_t({1, 2, 3, 4, 5}), filter);
+  // Note: The slot count could be less than 32 if the copy was optimized.
+  expect_properties(c, 32, test_hash{13}, 0.5f);
+  expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST_F(FilterTest, SingleInsert) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t filter;
-    ordered_hash_set hash_set;
-    for (const int elem : data) {
-      const auto filter_ans = filter.insert(elem);
-      const auto set_ans = hash_set.insert(elem);
-      EXPECT_EQ(set_ans.second, filter_ans.second);
-      ASSERT_TRUE(filter_ans.first != end(filter));
-      EXPECT_TRUE(filter_ans.first == filter.find(elem));
-      EXPECT_TRUE(use_minimum_storage(filter));
-    }
-    EXPECT_EQ(debug_view(hash_set), debug_view(filter));
-  });
+TEST(FilterTest, MoveConstructor) {
+  filter_t orig({1, 2, 3, 4, 5}, 30, test_hash{42});
+  orig.max_load_factor(1.0f);
+  const auto orig_slot_count = orig.slot_count();
+
+  const filter_t c = std::move(orig);
+
+  EXPECT_EQ(orig_slot_count, c.slot_count());
+  expect_properties(c, 32, test_hash{42}, 1.0f);
+  expect_contents(c, {1, 2, 3, 4, 5});
+
+  // orig can be reassigned.
+  orig = filter_t();
+  expect_properties(orig, 0, test_hash{}, default_max_load_factor);
+  expect_contents(orig, {});
 }
 
-TEST_F(FilterTest, RangeInsert) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    const ordered_hash_set hash_set(begin(data), end(data));
-    filter_t filter;
+TEST(FilterTest, MoveAssignment) {
+  filter_t orig({1, 2, 3, 4, 5}, 0, test_hash{19});
+  orig.max_load_factor(0.85f);
+  const auto orig_slot_count = orig.slot_count();
 
-    const auto middle = begin(data) + data.size() / 2;
+  filter_t c({5, 6, 7, 8, 9, 10}, 98, test_hash{33});
+  c = std::move(orig);
 
-    filter.insert(begin(data), middle);
-    EXPECT_TRUE(use_minimum_storage(filter));
+  EXPECT_EQ(orig_slot_count, c.slot_count());
+  expect_properties(c, 8, test_hash{19}, 0.85f);
+  expect_contents(c, {1, 2, 3, 4, 5});
 
-    filter.insert(middle, end(data));
-    EXPECT_TRUE(use_minimum_storage(filter));
-
-    EXPECT_EQ(debug_view(hash_set), debug_view(filter));
-  });
+  // orig can be reassigned.
+  orig = filter_t();
+  expect_properties(orig, 0, test_hash{}, default_max_load_factor);
+  expect_contents(orig, {});
 }
 
-TEST_F(FilterTest, InitializerListInsert) {
-  filter_t filter;
-
-  filter.insert({0, 0, 1, 1, 9, 8, 7, 6, 5, 4, 3, 2});
-  EXPECT_TRUE(use_minimum_storage(filter));
-  EXPECT_EQ(debug_view(make_iota_vector(10)), debug_view(filter));
-
-  filter.insert({14, 0, 9, 13, 12, 10, 11});
-  EXPECT_TRUE(use_minimum_storage(filter));
-  EXPECT_EQ(debug_view(make_iota_vector(15)), debug_view(filter));
-}
-
-TEST_F(FilterTest, Emplace) {
-  quotient_filter<std::string> filter;
-  std::string str(10, 'a');
-  EXPECT_FALSE(filter.count(str));
-  filter.emplace(10u, 'a');
-  EXPECT_TRUE(filter.count(str));
-  EXPECT_EQ(1, filter.size());
-}
-
-TEST_F(FilterTest, IteratorErase) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t filter(begin(data), end(data));
-    unordered_hash_set hash_set(begin(data), end(data));
-
-    for (const size_t hash : hash_set) {
-      const int key = hash_to_key(hash);
-      const auto it = filter.find(key);
-      ASSERT_NE(end(filter), it);
-      ASSERT_EQ(hash, *it);
-      filter.erase(it);
-      EXPECT_EQ(end(filter), filter.find(key));
-    }
-
-    EXPECT_TRUE(is_empty(filter));
-    EXPECT_TRUE(has_precise_reserve_for(filter, hash_set.size()));
-  });
-}
-
-TEST_F(FilterTest, KeyErase) {
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t filter(begin(data), end(data));
-    unordered_hash_set hash_set(begin(data), end(data));
-
-    for (const size_t hash : hash_set) {
-      const int key = hash_to_key(hash);
-      ASSERT_EQ(1, filter.count(key));
-      EXPECT_EQ(1, filter.erase(key));
-      EXPECT_EQ(0, filter.count(key));
-      EXPECT_EQ(0, filter.erase(key));
-    }
-
-    EXPECT_TRUE(is_empty(filter));
-    EXPECT_TRUE(has_precise_reserve_for(filter, hash_set.size()));
-  });
-}
-
-TEST_F(FilterTest, MemberSwap) {
-  const auto backup1 = make_test_filter(10);
-  const auto backup2 = make_test_filter(1000);
-  auto filter1 = backup1;
-  auto filter2 = backup2;
-
-  filter1.swap(filter2);
-
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup2, filter1);
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup1, filter2);
-}
-
-TEST_F(FilterTest, Find) {
-
-  for_each(test_vectors, [](const vector<int> &the_data) {
-    const unordered_set<int> dataset(begin(the_data), end(the_data));
-
-    const auto middle = next(begin(dataset), dataset.size() / 2);
-    const filter_t filter(begin(dataset), middle, dataset.size() / 2);
-
-    for_each(begin(dataset), middle, [&filter](int key) {
-      auto it = filter.find(key);
-      const auto hash_fn = filter.hash_function();
-
-      ASSERT_NE(end(filter), it);
-      EXPECT_EQ(hash_fn(key), *it);
-    });
-
-    for_each(middle, end(dataset),
-             [&filter](int key) { EXPECT_EQ(end(filter), filter.find(key)); });
-  });
-}
-
-TEST_F(FilterTest, Count) {
-  for_each(test_vectors, [](const vector<int> &the_data) {
-    const unordered_set<int> dataset(begin(the_data), end(the_data));
-    const auto middle = next(begin(dataset), dataset.size() / 2);
-    const filter_t filter(begin(dataset), middle, dataset.size() / 2);
-
-    for_each(begin(dataset), middle,
-             [&filter](int key) { EXPECT_EQ(1, filter.count(key)); });
-
-    for_each(middle, end(dataset),
-             [&filter](int key) { EXPECT_EQ(0, filter.count(key)); });
-  });
-}
-
-TEST_F(FilterTest, LoadFactor) {
-
-  for_each(test_vectors, [](const vector<int> &data) {
-    filter_t filter;
-    EXPECT_FLOAT_EQ(1.0f, filter.load_factor());
-    for (const int elem : data) {
-      filter.insert(elem);
-      EXPECT_FLOAT_EQ(float(filter.size()) / filter.slot_count(),
-                      filter.load_factor());
-    }
-  });
-}
-
-TEST_F(FilterTest, MaxLoadFactor) {
-  vector<float> factors;
-  for (float ml = 0.10f; ml <= 1.00f; ml += 0.01f)
-    factors.push_back(ml);
-  shuffle(factors);
-
-  const auto backup = make_test_filter(1000);
-  auto filter = backup;
-
-  for (const float ml : factors) {
-    assert(ml <= 1.0f);
-    assert(ml >= 0.10f);
-
-    const size_t slot_count = calc_expected_slot_count(filter.size(), ml);
-    const size_t prev_slot_count = filter.slot_count();
-
-    filter.max_load_factor(ml);
-    ASSERT_EQ(ml, filter.max_load_factor());
-
-    if (slot_count <= prev_slot_count) {
-      EXPECT_EQ(prev_slot_count, filter.slot_count());
-    } else {
-      EXPECT_EQ(slot_count, filter.slot_count());
-    }
-  }
-
-  filter.max_load_factor(default_max_load_factor);
-  filter.reserve(0);
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup, filter);
-}
-
-TEST_F(FilterTest, Reserve) {
-  const auto backup = make_test_filter(15);
-  auto filter = backup;
-
-  vector<size_t> capacities;
-  for (size_t num_elems = 0; num_elems < 1000; num_elems += 5)
-    capacities.push_back(num_elems);
-  shuffle(capacities);
-
-  for (const size_t num_elems : capacities) {
-    filter.reserve(num_elems);
-    EXPECT_TRUE(has_precise_reserve_for(filter, max(filter.size(), num_elems)));
-  }
-
-  filter.reserve(0);
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup, filter);
-}
-
-TEST_F(FilterTest, EqualComparison) {
-  const filter_t orig = {1, 2, 3, 4, 5};
-
-  vector<filter_t> cheap_copies;
-
-  cheap_copies.emplace_back(orig.begin(), orig.end(), 4 * orig.capacity());
-  ASSERT_NE(orig.capacity(), cheap_copies.back().capacity());
-
-  cheap_copies.emplace_back(orig.begin(), orig.end(), orig.capacity(),
-                            state_hash{2});
+TEST(FilterTest, Iterators) {
   {
-    filter_t temp(orig.begin(), orig.end());
-    temp.max_load_factor(default_max_load_factor / 4);
-    ASSERT_FALSE(float_equal(orig.max_load_factor(), temp.max_load_factor()));
-    cheap_copies.push_back(std::move(temp));
+    const filter_t empty_filter;
+    EXPECT_TRUE(empty_filter.begin() == empty_filter.end());
+    EXPECT_FALSE(empty_filter.begin() != empty_filter.end());
   }
+  {
+    const filter_t c = {50, 70, 90};
+    ASSERT_TRUE(c.begin() != c.end());
+    ASSERT_FALSE(c.begin() == c.end());
+    auto it1 = c.begin();
+    ASSERT_TRUE(it1 == c.begin());
+    ASSERT_FALSE(it1 != c.begin());
+    EXPECT_EQ(50, *it1);
 
-  for (const filter_t &cheap_copy : cheap_copies) {
-    ASSERT_TRUE(debug_view(cheap_copy) == debug_view(orig));
-    EXPECT_TRUE(cheap_copy == orig);
-    ASSERT_FALSE(debug_view(cheap_copy) != debug_view(orig));
-    EXPECT_FALSE(cheap_copy != orig);
+    auto it2 = ++it1;
+    ASSERT_TRUE(it2 == it1);
+    ASSERT_FALSE(it2 != it1);
+    ASSERT_TRUE(it2 != c.begin() && it2 != c.end());
+    ASSERT_FALSE(it2 == c.begin() || it2 == c.end());
+    EXPECT_EQ(70, *it2);
+    EXPECT_EQ(70, *it1);
+
+    auto it3 = it2++;
+    ASSERT_TRUE(it3 == it1);
+    EXPECT_EQ(70, *it3);
+    EXPECT_EQ(90, *it2++);
+
+    ASSERT_TRUE(it2 == c.end());
+    ASSERT_FALSE(it2 != c.end());
   }
-
-  const filter_t similar_filter = {6, 7, 8, 9, 10};
-
-  ASSERT_TRUE(debug_view(similar_filter) != debug_view(orig));
-  EXPECT_TRUE(similar_filter != orig);
 }
 
-TEST_F(FilterTest, NonMemberSwap) {
-  const auto backup1 = make_test_filter(10);
-  const auto backup2 = make_test_filter(1000);
-  auto filter1 = backup1;
-  auto filter2 = backup2;
+TEST(FilterTest, MaxSizeAndLimits) {
+  quotient_filter<int, test_hash, 4> c;
+  static_assert(decltype(c)::hash_bits == 4,
+                "The filter was instantiated with hash values of four bits");
 
-  swap(filter1, filter2);
+  c.max_load_factor(1.0f);
 
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup2, filter1);
-  EXPECT_PRED_FORMAT2(assert_all_equal, backup1, filter2);
+  ASSERT_EQ(8, c.max_size()); // 1 << (hash_bits - 1) where hash_bits = 4
+  c.insert({1, 2, 3, 4, 5, 6, 7, 8});
+  EXPECT_EQ(8, c.size());
+  EXPECT_FLOAT_EQ(1.0f, c.load_factor());
+  EXPECT_THROW(c.insert(9), std::length_error);
+  EXPECT_THROW(c.insert({7, 8, 9}), std::length_error);
+  EXPECT_NO_THROW(c.insert({6, 7, 8}));
+  c.erase(8);
+  ASSERT_EQ(7, c.size());
+  EXPECT_NO_THROW(c.insert({6, 9, 7}));
+  EXPECT_THROW(c.insert(8), std::length_error);
 }
 
-TEST_F(FilterTest, InsertionQueryAndDeletionMix) {
-  quotient_filter<int, state_hash, 10> filter;
-  filter.max_load_factor(1.0f);
+TEST(FilterTest, Clear) {
+  filter_t c({1, 2, 3, 4, 5}, 60, test_hash{139});
+  c.max_load_factor(0.60f);
+  const auto prev_slot_count = c.slot_count();
 
-  int_generator<int> gen_elem(83792341);
-  gen_elem.set_params(0, (1 << filter.fp_bits) - 1);
+  c.clear();
+  EXPECT_EQ(prev_slot_count, c.slot_count());
+  EXPECT_EQ(test_hash{139}, c.hash_function());
+  EXPECT_FLOAT_EQ(0.60f, c.max_load_factor());
+  expect_contents(c, {});
+}
 
-  repeat(10, [&filter, &gen_elem] {
-    unordered_hash_set hash_set;
+TEST(FilterTest, InsertElement) {
+  filter_t c;
+  const auto res0 = c.insert(10);
+  {
+    SCOPED_TRACE("First insertion");
+    EXPECT_TRUE(res0.second);
+    ASSERT_TRUE(res0.first != c.end());
+    EXPECT_EQ(10, *res0.first);
+    expect_contents(c, {10});
+  }
+  {
+    SCOPED_TRACE("Second insertion");
+    const auto res = c.insert(10);
+    EXPECT_FALSE(res.second);
+    ASSERT_TRUE(res.first == res0.first);
+    expect_contents(c, {10});
+  }
+  {
+    SCOPED_TRACE("Third insertion");
+    auto res = c.insert(20);
+    EXPECT_TRUE(res.second);
+    ASSERT_TRUE(res.first != c.end());
+    EXPECT_EQ(20, *res.first);
+    expect_contents(c, {10, 20});
+  }
+}
 
-    ASSERT_EQ(512, filter.max_size());
+TEST(FilterTest, InsertRange) {
+  filter_t c;
+  {
+    SCOPED_TRACE("First insertion");
+    int elems[] = {1, 2, 3, 4, 3, 3, 1};
+    c.insert(begin(elems), end(elems));
+    expect_contents(c, {1, 2, 3, 4});
+  }
+  {
+    SCOPED_TRACE("Second insertion");
+    int elems[] = {5, 0, 4, 3};
+    c.insert(begin(elems), end(elems));
+    expect_contents(c, {0, 1, 2, 3, 4, 5});
+  }
+  {
+    SCOPED_TRACE("Third insertion");
+    int elems[] = {1, 2, 3, 4};
+    c.insert(begin(elems), end(elems));
+    expect_contents(c, {0, 1, 2, 3, 4, 5});
+  }
+}
 
-    while (filter.size() != filter.max_size()) {
-      const int elem = gen_elem();
-      const auto pfilter = filter.insert(elem);
-      const auto pset = hash_set.insert(elem);
-      EXPECT_EQ(elem, *pfilter.first);
-      EXPECT_EQ(pset.second, pfilter.second);
-    }
+TEST(FilterTest, InsertInit) {
+  filter_t c;
+  {
+    SCOPED_TRACE("First insertion");
+    c.insert({2, 1, 2, 3, 3});
+    expect_contents(c, {1, 2, 3});
+  }
+  {
+    SCOPED_TRACE("Second insertion");
+    c.insert({2, 4, 1, 1, 5, 5, 0});
+    expect_contents(c, {0, 1, 2, 3, 4, 5});
+  }
+  {
+    SCOPED_TRACE("Third insertion");
+    c.insert({1, 3, 3, 3, 0, 5});
+    expect_contents(c, {0, 1, 2, 3, 4, 5});
+  }
+}
 
-    for (size_t hash : hash_set) {
-      const int key = hash_to_key(hash);
-      EXPECT_EQ(1, filter.count(key));
-      EXPECT_EQ(1, filter.erase(key));
-      EXPECT_EQ(0, filter.count(key));
-    }
+TEST(FilterTest, Emplace) {
+  quotient_filter<std::string> c;
+  const std::string str(10, 'a');
+  ASSERT_EQ(0, c.count(str));
+  c.emplace(10u, 'a');
+  ASSERT_EQ(1, c.count(str));
+  const size_t hash_value = c.hash_function()(str);
+  expect_contents(c, {hash_value});
+}
 
-    EXPECT_TRUE(is_empty(filter));
-    EXPECT_TRUE(has_precise_reserve_for(filter, hash_set.size()));
-  });
+TEST(FilterTest, EraseIterator) {
+  using const_iter = filter_t::const_iterator;
+  filter_t c = {1, 2, 3, 4, 5};
+
+  const const_iter it = c.find(3);
+  ASSERT_TRUE(it != c.end());
+  c.erase(it);
+  expect_contents(c, {1, 2, 4, 5});
+  EXPECT_TRUE(c.find(3) == c.end());
+}
+
+TEST(FilterTest, EraseKey) {
+  filter_t c = {1, 2, 3, 4, 5};
+  {
+    SCOPED_TRACE("Erase existing key");
+    EXPECT_EQ(1, c.erase(3));
+    EXPECT_EQ(0, c.count(3));
+    expect_contents(c, {1, 2, 4, 5});
+  }
+  {
+    SCOPED_TRACE("Erase non existing key");
+    EXPECT_EQ(0, c.erase(3));
+    EXPECT_EQ(0, c.count(3));
+    expect_contents(c, {1, 2, 4, 5});
+  }
+}
+
+TEST(FilterTest, Find) {
+  const filter_t c = {10, 20, 30, 40, 50};
+  {
+    SCOPED_TRACE("Find existing key");
+    const auto it = c.find(30);
+    ASSERT_TRUE(it != c.end());
+    EXPECT_EQ(30, *it);
+    EXPECT_TRUE(it == std::next(c.begin(), 2));
+  }
+  {
+    SCOPED_TRACE("Find non existing key");
+    const auto it = c.find(35);
+    EXPECT_TRUE(it == c.end());
+  }
+}
+
+TEST(FilterTest, Count) {
+  const filter_t c = {10, 20, 30, 40, 50, 50, 50, 40, 40};
+  ASSERT_EQ(5, c.size());
+
+  EXPECT_EQ(0, c.count(0));
+  EXPECT_EQ(1, c.count(10));
+  EXPECT_EQ(1, c.count(20));
+  EXPECT_EQ(1, c.count(30));
+  EXPECT_EQ(1, c.count(40));
+  EXPECT_EQ(1, c.count(50));
+  EXPECT_EQ(0, c.count(60));
+}
+
+TEST(FilterTest, LoadFactor) {
+  filter_t c;
+  c.insert(10);
+  ASSERT_EQ(1, c.size());
+  EXPECT_FLOAT_EQ(1.0f / c.slot_count(), c.load_factor());
+
+  c.insert({20, 30});
+  ASSERT_EQ(3, c.size());
+  EXPECT_FLOAT_EQ(3.0f / c.slot_count(), c.load_factor());
+}
+
+TEST(FilterTest, MaxLoadFactor) {
+  filter_t c(16);
+  auto new_elem = [&c] { return 10 * static_cast<int>(c.size()); };
+
+  c.max_load_factor(0.5f);
+  EXPECT_FLOAT_EQ(0.5f, c.max_load_factor());
+  auto slot_count = c.slot_count();
+  while (2 * c.size() < slot_count) {
+    c.insert(new_elem());
+    ASSERT_EQ(slot_count, c.slot_count());
+  }
+  EXPECT_FLOAT_EQ(0.5f, c.load_factor());
+
+  c.insert(new_elem());
+  EXPECT_LT(slot_count, c.slot_count());
+  slot_count = c.slot_count();
+  c.max_load_factor(1.0f);
+  EXPECT_FLOAT_EQ(1.0f, c.max_load_factor());
+  EXPECT_EQ(slot_count, c.slot_count())
+      << "slot_count() should not change if max load factor becomes greater";
+
+  while (c.size() < slot_count) {
+    c.insert(new_elem());
+    ASSERT_EQ(slot_count, c.slot_count());
+  }
+  EXPECT_FLOAT_EQ(1.0f, c.load_factor());
+
+  c.max_load_factor(0.5f);
+  EXPECT_LT(slot_count, c.slot_count())
+      << "slot_count() should grow to satisfy the requirements of "
+         "the new max_load_factor()";
+  EXPECT_LE(c.load_factor(), 0.5f);
+}
+
+TEST(FilterTest, Regenerate) {
+  filter_t c;
+  c.max_load_factor(0.5f);
+  c.regenerate(100);
+  EXPECT_LT(127, c.slot_count());
+  auto slot_count = c.slot_count();
+  c.insert({1, 2, 3, 4});
+  EXPECT_EQ(slot_count, c.slot_count());
+  expect_contents(c, {1, 2, 3, 4});
+  c.regenerate(0);
+  expect_contents(c, {1, 2, 3, 4});
+}
+
+TEST(FilterTest, Reserve) {
+  filter_t c;
+  c.max_load_factor(0.5f);
+  c.reserve(100);
+  EXPECT_LT(255, c.slot_count());
+  c.insert({1, 2, 3, 3});
+  c.reserve(30);
+  EXPECT_LT(63, c.slot_count());
+  expect_contents(c, {1, 2, 3});
+  c.reserve(0);
+  expect_contents(c, {1, 2, 3});
+}
+
+TEST(FilterTest, EqualityOperators) {
+  {
+    filter_t orig(0, test_hash{123});
+    orig.max_load_factor(1.0f);
+    orig.insert({1, 2, 3, 4, 5});
+    ASSERT_LT(7, orig.slot_count());
+
+    filter_t other(0, test_hash{321});
+    other.max_load_factor(0.5f);
+    other.insert({1, 2, 3, 4, 5});
+    ASSERT_LT(15, other.slot_count());
+
+    // The have different hash functions, max load factors and possibly
+    // different slot counts but they are still equal.
+    EXPECT_TRUE(as_const(orig) == as_const(other));
+    EXPECT_FALSE(as_const(orig) != as_const(other));
+  }
+
+  {
+    const filter_t orig = {1, 2, 3, 4, 5};
+    const filter_t other = {1, 2, 3, 4, 5, 6};
+
+    // Range comparison could be equal if size is not taken into account.
+    EXPECT_FALSE(orig == other);
+    EXPECT_FALSE(other == orig);
+    EXPECT_TRUE(orig != other);
+    EXPECT_TRUE(other != orig);
+  }
+  {
+    const filter_t empty1;
+    const filter_t empty2(10, test_hash{321});
+    EXPECT_TRUE(empty1 == empty2);
+    EXPECT_FALSE(empty1 != empty2);
+  }
+}
+
+TEST(FilterTest, SwapMember) {
+  filter_t c1({1, 2, 3, 4, 5}, 250, test_hash{23});
+  c1.max_load_factor(0.3f);
+  const auto c1_slot_count = c1.slot_count();
+
+  filter_t c2({5, 6, 7, 8, 9, 9, 7}, 0, test_hash{47});
+  c2.max_load_factor(0.8f);
+  const auto c2_slot_count = c2.slot_count();
+
+  c1.swap(c2);
+
+  EXPECT_EQ(c2_slot_count, c1.slot_count());
+  expect_properties(c1, 8, test_hash{47}, 0.8f);
+  expect_contents(c1, {5, 6, 7, 8, 9});
+
+  EXPECT_EQ(c1_slot_count, c2.slot_count());
+  expect_properties(c2, 256, test_hash{23}, 0.3f);
+  expect_contents(c2, {1, 2, 3, 4, 5});
+}
+
+TEST(FilterTest, SwapNonMember) {
+  filter_t c1({1, 2, 3, 4, 5}, 250, test_hash{23});
+  c1.max_load_factor(0.3f);
+  const auto c1_slot_count = c1.slot_count();
+
+  filter_t c2({5, 6, 7, 8, 9, 9, 7}, 0, test_hash{47});
+  c2.max_load_factor(0.8f);
+  const auto c2_slot_count = c2.slot_count();
+
+  swap(c1, c2);
+
+  EXPECT_EQ(c2_slot_count, c1.slot_count());
+  expect_properties(c1, 8, test_hash{47}, 0.8f);
+  expect_contents(c1, {5, 6, 7, 8, 9});
+
+  EXPECT_EQ(c1_slot_count, c2.slot_count());
+  expect_properties(c2, 256, test_hash{23}, 0.3f);
+  expect_contents(c2, {1, 2, 3, 4, 5});
 }
