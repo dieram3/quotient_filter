@@ -7,11 +7,10 @@
 #include <gtest/gtest.h>
 
 #include <iterator>    //
-#include <limits>      //
 #include <ostream>     // for std::ostream
-#include <string>      // for std::string
+#include <stdexcept>   // for std::length_error
 #include <type_traits> // for concepts check section
-#include <utility>     // for std::move
+#include <utility>     //
 #include <cassert>     // for assert
 #include <cstddef>     //
 // See below the use of uncommented headers.
@@ -39,8 +38,10 @@ using std::end;
 using std::distance;
 // Also use std::next
 
-// From <limits>
-using std::numeric_limits;
+// From utility
+using std::pair;
+using std::make_pair;
+// Also use std::move
 
 // From <cstddef>
 using std::ptrdiff_t;
@@ -53,7 +54,7 @@ using std::size_t;
 static constexpr float default_max_load_factor = 0.75f;
 
 // ==========================================
-// Basic Utility functions.
+// Helper functions.
 // ==========================================
 
 template <class T>
@@ -78,6 +79,9 @@ public:
     // hash gives a value in [0, numeric_limits<unsigned>::max()]
     return static_cast<unsigned>(key);
   }
+  size_t operator()(const pair<int, int> &p) {
+    return (*this)(p.first) + (*this)(p.second);
+  }
   friend bool operator==(const test_hash &lhs, const test_hash &rhs) noexcept {
     return lhs.state == rhs.state;
   }
@@ -92,8 +96,7 @@ public:
 // Type aliases
 // ==========================================
 
-using filter_t =
-    quotient_filter<int, test_hash, numeric_limits<unsigned>::digits>;
+using filter_t = quotient_filter<int, test_hash, 16>;
 
 // ==========================================
 // Concepts check
@@ -117,25 +120,63 @@ STATIC_ASSERT((std::is_constructible<filter_t, filter_t::size_type>::value));
 STATIC_ASSERT((!std::is_convertible<filter_t::size_type, filter_t>::value));
 
 // ==========================================
-// Quotient-Filter extended query functions
+// Quotient-Filter assertions
 // ==========================================
 
-static void expect_properties(const filter_t &c, const size_t min_slot_count,
+namespace {
+struct slots_status {
+  enum status_t { at_least, exactly };
+
+  status_t status;
+  size_t slot_count;
+};
+
+static slots_status sc_at_least(size_t slot_count) {
+  return {slots_status::at_least, slot_count};
+}
+
+static slots_status sc_exactly(size_t slot_count) {
+  return {slots_status::exactly, slot_count};
+}
+} // End anonymous namespace
+
+static void expect_properties(const filter_t &c, const slots_status sstatus,
                               const test_hash hash_fn, const float ml) {
-  EXPECT_LE(min_slot_count, c.slot_count());
+  switch (sstatus.status) {
+  case slots_status::exactly:
+    EXPECT_EQ(sstatus.slot_count, c.slot_count());
+    break;
+  case slots_status::at_least:
+    // Note: probably replace EXPECT_LE with EXPECT_EQ will be the same since
+    // the current implementation always use the minimal space it can.
+    EXPECT_LE(sstatus.slot_count, c.slot_count());
+    break;
+  }
+
   EXPECT_EQ(hash_fn, c.hash_function());
   EXPECT_EQ(ml, c.max_load_factor());
 }
 
-// Checks whether a filter has the given contents and checks invariants.
+// Checks whether a filter is empty and checks invariants.
+static void expect_empty(const filter_t &c) {
+  EXPECT_TRUE(c.empty());
+  EXPECT_EQ(0, c.size());
+  EXPECT_EQ(0, distance(c.begin(), c.end()));
+  EXPECT_FLOAT_EQ(0.0f, c.load_factor());
+  EXPECT_LE(c.load_factor(), c.max_load_factor());
+}
+
+// Checks whether a non-empty filter has the given contents and checks
+// invariants.
 template <typename T, typename H, size_t B>
 static void expect_contents(const quotient_filter<T, H, B> &c,
                             const initializer_list<size_t> hash_list) {
+  ASSERT_TRUE(hash_list.size() > 0) << "For empty filters use expect_empty()";
+
+  EXPECT_FALSE(c.empty());
   EXPECT_EQ(hash_list.size(), c.size());
-  EXPECT_EQ(!hash_list.size(), c.empty());
   EXPECT_EQ(ptrdiff_t(hash_list.size()), distance(c.begin(), c.end()));
-  EXPECT_FLOAT_EQ(c.slot_count() ? float(c.size()) / c.slot_count() : 0,
-                  c.load_factor());
+  EXPECT_FLOAT_EQ(float(c.size()) / c.slot_count(), c.load_factor());
   EXPECT_LE(c.load_factor(), c.max_load_factor());
 
   auto it = c.begin();
@@ -150,119 +191,118 @@ static void expect_contents(const quotient_filter<T, H, B> &c,
 // Tests section
 // ==========================================
 
-TEST(FilterTest, DefaultConstructor) {
+TEST(FilterTest, ConstructDefault) {
   const filter_t c;
-  expect_properties(c, 0, test_hash{}, default_max_load_factor);
-  expect_contents(c, {});
+  expect_properties(c, sc_exactly(0), test_hash{}, default_max_load_factor);
+  expect_empty(c);
 }
 
-TEST(FilterTest, SlotsConstructor) {
+TEST(FilterTest, ConstructSlots) {
   const filter_t c(16);
-  expect_properties(c, 16, test_hash{}, default_max_load_factor);
-  expect_contents(c, {});
+  expect_properties(c, sc_at_least(16), test_hash{}, default_max_load_factor);
+  expect_empty(c);
 }
 
-TEST(FilterTest, SlotsHashConstructor) {
+TEST(FilterTest, ConstructSlotsHash) {
   const filter_t c(25, test_hash{3});
-  expect_properties(c, 32, test_hash{3}, default_max_load_factor);
-  expect_contents(c, {});
+  expect_properties(c, sc_at_least(32), test_hash{3}, default_max_load_factor);
+  expect_empty(c);
 }
 
-TEST(FilterTest, RangeConstructor) {
+TEST(FilterTest, ConstructRange) {
   const int elems[] = {2, 3, 4, 5, 1, 2, 3};
   const filter_t c(begin(elems), end(elems));
-  expect_properties(c, 8, test_hash{}, default_max_load_factor);
+  expect_properties(c, sc_at_least(8), test_hash{}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, RangeSlotsConstructor) {
+TEST(FilterTest, ConstructRangeSlots) {
   const int elems[] = {2, 3, 4, 5, 1, 2, 3};
   const filter_t c(begin(elems), end(elems), 9);
-  expect_properties(c, 16, test_hash{}, default_max_load_factor);
+  expect_properties(c, sc_at_least(16), test_hash{}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, RangeSlotsHashConstructor) {
+TEST(FilterTest, ConstructRangeSlotsHash) {
   const int elems[] = {2, 3, 4, 5, 1, 2, 3};
   const filter_t c(begin(elems), end(elems), 30, test_hash{29});
-  expect_properties(c, 32, test_hash{29}, default_max_load_factor);
+  expect_properties(c, sc_at_least(32), test_hash{29}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, InitConstructor) {
+TEST(FilterTest, ConstructInit) {
   const filter_t c = {4, 3, 3, 4, 1, 2, 5};
-  expect_properties(c, 8, test_hash{}, default_max_load_factor);
+  expect_properties(c, sc_at_least(8), test_hash{}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, InitSlotsConstructor) {
+TEST(FilterTest, ConstructInitSlots) {
   const filter_t c({4, 3, 3, 4, 1, 2, 5}, 60);
-  expect_properties(c, 64, test_hash{}, default_max_load_factor);
+  expect_properties(c, sc_at_least(64), test_hash{}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, InitSlotsHashConstructor) {
+TEST(FilterTest, ConstructInitSlotsHash) {
   const filter_t c({4, 3, 3, 4, 1, 2, 5}, 33, test_hash{39});
-  expect_properties(c, 64, test_hash{39}, default_max_load_factor);
+  expect_properties(c, sc_at_least(64), test_hash{39}, default_max_load_factor);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, CopyConstructor) {
+TEST(FilterTest, ConstructCopy) {
   filter_t orig({1, 2, 3, 4, 5, 5}, 25, test_hash{13});
   orig.max_load_factor(0.5f);
 
   const filter_t c = as_const(orig);
 
   // Note: The slot count could be less than 32 if the copy was optimized.
-  expect_properties(c, 32, test_hash{13}, 0.5f);
+  expect_properties(c, sc_at_least(32), test_hash{13}, 0.5f);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, CopyAssignment) {
+TEST(FilterTest, AssignCopy) {
   filter_t orig({1, 2, 3, 4, 5, 5}, 25, test_hash{13});
   orig.max_load_factor(0.5f);
+  const auto orig_sc = orig.slot_count();
 
   filter_t c({6, 7, 8}, 100, test_hash{29});
   c = as_const(orig);
 
-  // Note: The slot count could be less than 32 if the copy was optimized.
-  expect_properties(c, 32, test_hash{13}, 0.5f);
+  // Note: The slot count could be different if the copy was optimized.
+  expect_properties(c, sc_exactly(orig_sc), test_hash{13}, 0.5f);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 
-TEST(FilterTest, MoveConstructor) {
+TEST(FilterTest, ConstructorMove) {
   filter_t orig({1, 2, 3, 4, 5}, 30, test_hash{42});
   orig.max_load_factor(1.0f);
-  const auto orig_slot_count = orig.slot_count();
+  const auto orig_sc = orig.slot_count();
 
   const filter_t c = std::move(orig);
 
-  EXPECT_EQ(orig_slot_count, c.slot_count());
-  expect_properties(c, 32, test_hash{42}, 1.0f);
+  expect_properties(c, sc_exactly(orig_sc), test_hash{42}, 1.0f);
   expect_contents(c, {1, 2, 3, 4, 5});
 
   // orig can be reassigned.
   orig = filter_t();
-  expect_properties(orig, 0, test_hash{}, default_max_load_factor);
-  expect_contents(orig, {});
+  expect_properties(orig, sc_exactly(0), test_hash{}, default_max_load_factor);
+  expect_empty(orig);
 }
 
-TEST(FilterTest, MoveAssignment) {
+TEST(FilterTest, AssignMove) {
   filter_t orig({1, 2, 3, 4, 5}, 0, test_hash{19});
   orig.max_load_factor(0.85f);
-  const auto orig_slot_count = orig.slot_count();
+  const auto orig_sc = orig.slot_count();
 
   filter_t c({5, 6, 7, 8, 9, 10}, 98, test_hash{33});
   c = std::move(orig);
 
-  EXPECT_EQ(orig_slot_count, c.slot_count());
-  expect_properties(c, 8, test_hash{19}, 0.85f);
+  expect_properties(c, sc_exactly(orig_sc), test_hash{19}, 0.85f);
   expect_contents(c, {1, 2, 3, 4, 5});
 
   // orig can be reassigned.
   orig = filter_t();
-  expect_properties(orig, 0, test_hash{}, default_max_load_factor);
-  expect_contents(orig, {});
+  expect_properties(orig, sc_exactly(0), test_hash{}, default_max_load_factor);
+  expect_empty(orig);
 }
 
 TEST(FilterTest, Iterators) {
@@ -316,18 +356,19 @@ TEST(FilterTest, MaxSizeAndLimits) {
   ASSERT_EQ(7, c.size());
   EXPECT_NO_THROW(c.insert({6, 9, 7}));
   EXPECT_THROW(c.insert(8), std::length_error);
+
+  EXPECT_EQ(8, c.slot_count());
+  expect_contents(c, {1, 2, 3, 4, 5, 6, 7, 9});
 }
 
 TEST(FilterTest, Clear) {
   filter_t c({1, 2, 3, 4, 5}, 60, test_hash{139});
   c.max_load_factor(0.60f);
-  const auto prev_slot_count = c.slot_count();
+  const auto prev_sc = c.slot_count();
 
   c.clear();
-  EXPECT_EQ(prev_slot_count, c.slot_count());
-  EXPECT_EQ(test_hash{139}, c.hash_function());
-  EXPECT_FLOAT_EQ(0.60f, c.max_load_factor());
-  expect_contents(c, {});
+  expect_properties(c, sc_exactly(prev_sc), test_hash{139}, 0.60f);
+  expect_empty(c);
 }
 
 TEST(FilterTest, InsertElement) {
@@ -399,13 +440,28 @@ TEST(FilterTest, InsertInit) {
 }
 
 TEST(FilterTest, Emplace) {
-  quotient_filter<std::string> c;
-  const std::string str(10, 'a');
-  ASSERT_EQ(0, c.count(str));
-  c.emplace(10u, 'a');
-  ASSERT_EQ(1, c.count(str));
-  const size_t hash_value = c.hash_function()(str);
-  expect_contents(c, {hash_value});
+  quotient_filter<pair<int, int>, test_hash, 16> c;
+  {
+    SCOPED_TRACE("First emplacement");
+    const auto ans = c.emplace(3, 4);
+    EXPECT_TRUE(ans.second);
+    EXPECT_TRUE(c.begin() == ans.first);
+    expect_contents(c, {7});
+  }
+  {
+    SCOPED_TRACE("Second emplacement");
+    const auto ans = c.emplace(2, 5);
+    EXPECT_FALSE(ans.second);
+    EXPECT_TRUE(c.begin() == ans.first);
+    expect_contents(c, {7});
+  }
+  {
+    SCOPED_TRACE("Third emplacement");
+    const auto ans = c.emplace(make_pair(10, 5));
+    EXPECT_TRUE(ans.second);
+    EXPECT_TRUE(std::next(c.begin(), 1) == ans.first);
+    expect_contents(c, {7, 15});
+  }
 }
 
 TEST(FilterTest, EraseIterator) {
@@ -513,12 +569,15 @@ TEST(FilterTest, Regenerate) {
   filter_t c;
   c.max_load_factor(0.5f);
   c.regenerate(100);
-  EXPECT_LT(127, c.slot_count());
+  expect_properties(c, sc_at_least(128), test_hash{}, 0.5f);
+
   auto slot_count = c.slot_count();
   c.insert({1, 2, 3, 4});
   EXPECT_EQ(slot_count, c.slot_count());
   expect_contents(c, {1, 2, 3, 4});
+
   c.regenerate(0);
+  expect_properties(c, sc_at_least(8), test_hash{}, 0.5f);
   expect_contents(c, {1, 2, 3, 4});
 }
 
@@ -526,12 +585,16 @@ TEST(FilterTest, Reserve) {
   filter_t c;
   c.max_load_factor(0.5f);
   c.reserve(100);
-  EXPECT_LT(255, c.slot_count());
+  expect_properties(c, sc_at_least(256), test_hash{}, 0.5f);
+  expect_empty(c);
+
   c.insert({1, 2, 3, 3});
   c.reserve(30);
-  EXPECT_LT(63, c.slot_count());
+  expect_properties(c, sc_at_least(64), test_hash{}, 0.5f);
   expect_contents(c, {1, 2, 3});
+
   c.reserve(0);
+  expect_properties(c, sc_at_least(8), test_hash{}, 0.5f);
   expect_contents(c, {1, 2, 3});
 }
 
@@ -574,39 +637,35 @@ TEST(FilterTest, EqualityOperators) {
 TEST(FilterTest, SwapMember) {
   filter_t c1({1, 2, 3, 4, 5}, 250, test_hash{23});
   c1.max_load_factor(0.3f);
-  const auto c1_slot_count = c1.slot_count();
+  const auto c1_sc = c1.slot_count();
 
   filter_t c2({5, 6, 7, 8, 9, 9, 7}, 0, test_hash{47});
   c2.max_load_factor(0.8f);
-  const auto c2_slot_count = c2.slot_count();
+  const auto c2_sc = c2.slot_count();
 
   c1.swap(c2);
 
-  EXPECT_EQ(c2_slot_count, c1.slot_count());
-  expect_properties(c1, 8, test_hash{47}, 0.8f);
+  expect_properties(c1, sc_exactly(c2_sc), test_hash{47}, 0.8f);
   expect_contents(c1, {5, 6, 7, 8, 9});
 
-  EXPECT_EQ(c1_slot_count, c2.slot_count());
-  expect_properties(c2, 256, test_hash{23}, 0.3f);
+  expect_properties(c2, sc_exactly(c1_sc), test_hash{23}, 0.3f);
   expect_contents(c2, {1, 2, 3, 4, 5});
 }
 
 TEST(FilterTest, SwapNonMember) {
   filter_t c1({1, 2, 3, 4, 5}, 250, test_hash{23});
   c1.max_load_factor(0.3f);
-  const auto c1_slot_count = c1.slot_count();
+  const auto c1_sc = c1.slot_count();
 
   filter_t c2({5, 6, 7, 8, 9, 9, 7}, 0, test_hash{47});
   c2.max_load_factor(0.8f);
-  const auto c2_slot_count = c2.slot_count();
+  const auto c2_sc = c2.slot_count();
 
   swap(c1, c2);
 
-  EXPECT_EQ(c2_slot_count, c1.slot_count());
-  expect_properties(c1, 8, test_hash{47}, 0.8f);
+  expect_properties(c1, sc_exactly(c2_sc), test_hash{47}, 0.8f);
   expect_contents(c1, {5, 6, 7, 8, 9});
 
-  EXPECT_EQ(c1_slot_count, c2.slot_count());
-  expect_properties(c2, 256, test_hash{23}, 0.3f);
+  expect_properties(c2, sc_exactly(c1_sc), test_hash{23}, 0.3f);
   expect_contents(c2, {1, 2, 3, 4, 5});
 }
