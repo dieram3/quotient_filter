@@ -14,23 +14,21 @@
 // ==========================================
 
 using qfilter = ::quofil::quotient_filter_fp;
-using qf_iterator = qfilter::iterator;
+using iterator = qfilter::iterator;
+using size_type = qfilter::size_type;
+using value_type = qfilter::value_type;
 
 using std::make_pair;
 
-using size_type = qfilter::size_type;
-using value_type = qfilter::value_type;
-using block_type = value_type;
+static_assert(std::is_unsigned<value_type>::value,
+              "value_type (the type of hash values) must be unsigned.");
 
-static_assert(std::is_unsigned<block_type>::value,
-              "The block-type must be unsigned.");
-
-static_assert(sizeof(block_type) >= sizeof(unsigned),
-              "block_type must have a capacity equal to or greater than "
-              "'unsigned int'.");
+static_assert(sizeof(value_type) >= sizeof(unsigned),
+              "value_type (the type of hash values) must have a capacity equal "
+              "to or greater than 'unsigned int'.");
 
 static constexpr size_type bits_per_block =
-    std::numeric_limits<block_type>::digits;
+    std::numeric_limits<value_type>::digits;
 
 // ==========================================
 // Exceptions.
@@ -208,9 +206,9 @@ size_type qfilter::find_run_start(const size_type canonical_pos) const
   return pos;
 }
 
-qf_iterator qfilter::find(const value_type fp) const noexcept {
+iterator qfilter::find(const value_type fp) const noexcept {
 
-  // It is necessary. Note that if *this was default constructed. All flags
+  // It is necessary because if *this was default constructed. All flags
   // vectors are empty.
   if (empty())
     return end();
@@ -258,10 +256,10 @@ void qfilter::insert_into(size_type pos, value_type remainder,
   } while (!found_empty_slot);
 }
 
-std::pair<qf_iterator, bool> qfilter::insert(const value_type fp) {
+std::pair<iterator, bool> qfilter::insert(const value_type fp) {
 
   if (full())
-    throw quofil::filter_is_full();
+    throw filter_is_full();
 
   const auto fp_quotient = extract_quotient(fp);
   const auto fp_remainder = extract_remainder(fp);
@@ -321,10 +319,10 @@ void qfilter::remove_entry(const size_type remove_pos,
 
   const bool was_head = !is_continuation[remove_pos];
 
-  // First, move the elements to the left.
   size_type pos = remove_pos;             // Current position.
   size_type quotient_pos = canonical_pos; // Quotient of the current posistion.
 
+  // First, move the elements to the left.
   while (true) {
     const size_type next_pos = incr_pos(pos);
 
@@ -337,7 +335,7 @@ void qfilter::remove_entry(const size_type remove_pos,
     // Check for possible new cluster.
     if (!is_continuation[pos]) {
       quotient_pos = find_next_occupied(quotient_pos);
-      assert(quotient_pos != next_pos);
+      assert(quotient_pos != next_pos && "The run was supposed to be shifted");
       if (quotient_pos == pos)
         is_shifted[pos] = false;
     }
@@ -368,8 +366,7 @@ void qfilter::remove_entry(const size_type remove_pos,
 // Iterator
 // ==========================================
 
-auto qfilter::begin() const noexcept -> iterator {
-
+iterator qfilter::begin() const noexcept {
   if (empty())
     return end();
 
@@ -379,7 +376,7 @@ auto qfilter::begin() const noexcept -> iterator {
   return iterator(this, pos, canonical_pos);
 }
 
-void qf_iterator::increment() noexcept {
+void iterator::increment() noexcept {
   assert(pos <= filter->num_slots && "The iterator has invalid position");
   assert(pos != filter->num_slots && "Can't increment end iterator");
 
