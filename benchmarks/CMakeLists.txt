@@ -1,1 +1,1 @@
-add_qf_executable(benchmark "benchmark_main.cpp")
+add_qf_executable(insertion_benchmark "insertion_benchmark.cpp")
