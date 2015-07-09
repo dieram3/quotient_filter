@@ -254,7 +254,7 @@ TEST(FilterTest, ConstructCopy) {
 
   const filter_t c = as_const(orig);
 
-  // Note: The slot count could be less than 32 if the copy was optimized.
+  // Note: The slot count could be different if the copy was optimized.
   expect_properties(c, sc_at_least(32), test_hash{13}, 0.5f);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
