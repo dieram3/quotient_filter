@@ -13,16 +13,12 @@ endif()
 find_package(Threads) # Needed for gtest
 find_package(Doxygen)
 
-# Integrate utilities
-
-add_subdirectory("utils")
-
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ---------------------------------------
-# Utility functions
+# Helper functions
 # ---------------------------------------
 
 function(target_enable_all_warnings TARGET_ID)
@@ -54,10 +50,16 @@ function(add_qf_executable TARGET_ID)
 endfunction()
 
 # ---------------------------------------
+# Add utilities
+# ---------------------------------------
+
+add_subdirectory("utils")
+
+# ---------------------------------------
 # Add the Quotient-Filter library  
 # ---------------------------------------
 
-add_subdirectory(src)
+add_subdirectory("src")
 
 # ---------------------------------------
 # Add the unit tests  

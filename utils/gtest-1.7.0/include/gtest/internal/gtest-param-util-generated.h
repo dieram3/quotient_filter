@@ -99,9 +99,10 @@ class ValueArray2 {
     return ValuesIn(array);
   }
 
+  ValueArray2(const ValueArray2&) = default;
+  void operator=(const ValueArray2&) = delete;
+
  private:
-  // No implementation - assignment is unsupported.
-  void operator=(const ValueArray2& other);
 
   const T1 v1_;
   const T2 v2_;
