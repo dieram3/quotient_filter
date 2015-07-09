@@ -251,11 +251,12 @@ TEST(FilterTest, ConstructInitSlotsHash) {
 TEST(FilterTest, ConstructCopy) {
   filter_t orig({1, 2, 3, 4, 5, 5}, 25, test_hash{13});
   orig.max_load_factor(0.5f);
+  const auto orig_sc = orig.slot_count();
 
   const filter_t c = as_const(orig);
 
   // Note: The slot count could be different if the copy was optimized.
-  expect_properties(c, sc_at_least(32), test_hash{13}, 0.5f);
+  expect_properties(c, sc_exactly(orig_sc), test_hash{13}, 0.5f);
   expect_contents(c, {1, 2, 3, 4, 5});
 }
 

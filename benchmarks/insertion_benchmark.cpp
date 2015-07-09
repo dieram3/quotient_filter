@@ -5,12 +5,10 @@
 
 #include <quofil/quotient_filter.hpp>
 
-#include <atomic>
-#include <future>
-#include <iostream> // for std::cout
-#include <random>   // for std::random_device, std::mt19937
-#include <unordered_set>
-#include <climits>
+#include <iostream>      // for std::cout
+#include <random>        // for std::random_device, std::mt19937
+#include <unordered_set> // for std::unordered_set
+#include <climits>       // for INT_MIN, INT_MAX
 
 struct self_hash {
   size_t operator()(int key) const { return static_cast<unsigned>(key); }
