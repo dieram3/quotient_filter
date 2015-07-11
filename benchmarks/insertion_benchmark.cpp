@@ -5,7 +5,9 @@
 
 #include <quofil/quotient_filter.hpp>
 
+#include <algorithm>     // for std::generate
 #include <iostream>      // for std::cout
+#include <vector>        // for std::vector
 #include <random>        // for std::random_device, std::mt19937
 #include <unordered_set> // for std::unordered_set
 #include <climits>       // for INT_MIN, INT_MAX
@@ -55,11 +57,11 @@ static auto measure(const size_t num_elems, const float ml, bool reserve) {
   if (reserve)
     set.reserve(num_elems);
 
-  timer.start();
+  std::vector<int> vec(num_elems);
+  std::generate(vec.begin(), vec.end(), [&] { return dist(gen); });
 
-  while (set.size() < num_elems) {
-    set.insert(dist(gen));
-  }
+  timer.start();
+  set.insert(vec.begin(), vec.end());
   timer.finish();
   return timer.elapsed_ms();
 }
